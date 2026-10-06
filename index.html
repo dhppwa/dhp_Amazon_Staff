@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  
+  <title>D House x Café Amazon</title>
+
+  <!-- เชื่อมโยงไฟล์ Manifest สำหรับ Android / Chrome -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#059669">
+
+  <!-- รองรับ iOS Safari -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="D House x Café Amazon">
+  <link rel="apple-touch-icon" href="public/assets/image/icon-192.png">
+
+  <link rel="stylesheet" href="styles.css?v=34">
+  
+  <!-- โหลดฟอนต์ภาษาไทยสำหรับ Canvas Printer -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;700&family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    body { margin: 0; padding: 0; }
+    #toast {
+      position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0, 0, 0, 0.85); color: #fff; padding: 12px 24px;
+      border-radius: 25px; font-size: 14px; opacity: 0; pointer-events: none;
+      transition: opacity 0.3s ease; z-index: 9999;
+    }
+    #toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <div id="app"></div>
+  <div id="toast" role="status"></div>
+
+  <script>
+    // ป้องกันหน้าขาวหากเกิดข้อผิดพลาดตอนเริ่มต้นแอป
+    window.addEventListener('error', function (event) {
+      const target = document.getElementById('app');
+      if (target && !target.textContent.trim()) {
+        target.innerHTML = '<div style="padding:32px;font-family:system-ui;color:#14382d"><h2>ไม่สามารถเปิดแอปได้</h2><p>กรุณารีเฟรชหน้าอีกครั้ง</p><small>' + (event.message || 'Startup error') + '</small></div>';
+      }
+    });
+  </script>
+
+  <!-- Supabase JS SDK -->
+  <!-- Library สำหรับสแกน QR Code -->
+  <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+
+  <!-- ไฟล์โค้ดของแอป -->
+  <script src="config.js?v=8"></script>
+  <script src="d1-client.js?v=2"></script>
+    <script src="api.js?v=22"></script>
+    <script src="app.js?v=78"></script>
+
+  <!-- สคริปต์เปิดใช้งาน Service Worker สำหรับ Android PWA -->
+  <script>
+    let deferredInstallPrompt = null;
+    window.addEventListener('beforeinstallprompt', (event) => {
+      event.preventDefault();
+      deferredInstallPrompt = event;
+      window.pwaInstallReady = true;
+      window.dispatchEvent(new Event('pwa-install-available'));
+    });
+
+    window.requestPwaInstall = async () => {
+      if (!deferredInstallPrompt || window.matchMedia('(display-mode: standalone)').matches) return false;
+      try {
+        await deferredInstallPrompt.prompt();
+        await deferredInstallPrompt.userChoice;
+        return true;
+      } finally {
+        deferredInstallPrompt = null;
+      }
+    };
+
+    window.addEventListener('appinstalled', () => {
+      deferredInstallPrompt = null;
+      window.dispatchEvent(new Event('pwa-installed'));
+    });
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js', { scope: './' })
+          .then((reg) => console.log('SW Registered:', reg))
+          .catch((err) => console.error('SW Error:', err));
+      });
+    }
+  </script>
+</body>
+</html>

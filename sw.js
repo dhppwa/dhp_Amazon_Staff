@@ -1,5 +1,5 @@
 // sw.js ( Service Worker แบบพื้นฐานเพื่อให้ PWA ติดตั้งบน Android ได้ )
-const CACHE_NAME = 'dwallet-v24';
+const CACHE_NAME = 'dwallet-v25';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

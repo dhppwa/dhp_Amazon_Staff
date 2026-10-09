@@ -1582,7 +1582,7 @@ async function openHouseManagementModal() {
     const searchInput = document.querySelector('#house-search-input');
     if (searchInput) searchInput.value = '';
     await loadHouseTableData();
-    showToast('อัปเดตข้อมูลตารางเรียบร้อยแล้ว');
+    
   };
 
   document.querySelector('#btn-printer-settings').onclick = openPrinterSettings;
@@ -1644,8 +1644,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               <div>
                 <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะเข้าใช้งาน</label>
                 <select id="h-field-is-use" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
-                  <option value="1" ${record?.isUse ? 'selected' : ''}>เข้าใช้งานอยู่</option>
-                  <option value="0" ${!record?.isUse ? 'selected' : ''}>ไม่ได้เข้าใช้งาน</option>
+                  <option value="1" ${record?.isUse ? 'selected' : ''}>กำลังออนไลน์</option>
+                  <option value="0" ${!record?.isUse ? 'selected' : ''}>ล๊อคเอ้า</option>
                 </select>
               </div>
             ` : '<input type="hidden" id="h-field-is-use" value="0" />'}
@@ -1665,13 +1665,13 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               </div>
             </div>
 
-            <div style="margin-top:0.4rem; padding:0.75rem; background:#f1f5f9; border-radius:6px; border:1px solid #e2e8f0;">
-              <p style="margin:0; font-size:0.85rem; color:#64748b;">
+            <div style="margin-top:0.4rem; padding:0.85rem; background:#faf5ff; border-radius:8px; border:2px solid #a855f7; box-shadow:0 2px 8px rgba(126,34,206,0.12);">
+              <p style="margin:0; font-size:0.85rem; color:#6b21a8; font-weight:600;">
                 ${isEdit ? 'ต้องการรีเซ็ตรหัสผ่านสำหรับเข้าสู่ระบบของสมาชิกรายนี้?' : 'รหัสผ่านเริ่มต้นสำหรับสมาชิกใหม่คือ: 1234'}
               </p>
               ${
                 isEdit
-                  ? `<button type="button" id="btn-reset-password" style="margin-top:0.5rem; padding:0.4rem 0.8rem; background:#eab308; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; font-size:0.85rem;">
+                  ? `<button type="button" id="btn-reset-password" style="margin-top:0.6rem; padding:0.55rem 0.9rem; background:#7e22ce; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; box-shadow:0 2px 5px rgba(126,34,206,0.3);">
                       🔄 Reset รหัสผ่านเป็น 1234
                     </button>`
                   : ''
@@ -1857,7 +1857,7 @@ function renderHouseTable(list) {
       </td>
       <td style="padding:0.75rem; text-align:center;">
         <span style="display:inline-block; min-width:48px; padding:0.25rem 0.5rem; border-radius:999px; font-size:0.8rem; font-weight:bold; color:#fff; background:${item.isUse ? '#16a34a' : '#64748b'};">
-          ${item.isUse ? 'เข้าใช้งานอยู่' : 'ไม่ได้เข้าใช้งาน'}
+          ${item.isUse ? 'กำลังออนไลน์' : 'ล๊อคเอ้า'}
         </span>
       </td>
       <td style="padding:0.75rem;">${esc(item.name || '-')}</td>
@@ -1965,7 +1965,10 @@ async function openAdminLoginDialog() {
           <input id="admin-username" name="username" type="text" inputmode="tel" autocomplete="username" required>
         </label>
         <label style="display:grid; gap:6px; color:#2c241d;">Password
-          <input id="admin-password" name="password" type="password" autocomplete="current-password" required>
+          <span style="position:relative; display:block;">
+            <input id="admin-password" name="password" type="password" autocomplete="current-password" required style="width:100%; padding-right:48px; box-sizing:border-box;">
+            <button id="btn-toggle-admin-password" type="button" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน" style="position:absolute; top:50%; right:7px; transform:translateY(-50%); width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; border-radius:9px; background:#e8efe4; color:#194832; font-size:18px; cursor:pointer;">👁</button>
+          </span>
         </label>
         <p id="admin-login-error" role="alert" style="display:none; margin:0; color:#b63f35; font-size:.85rem;"></p>
         <div style="display:flex; justify-content:flex-end; gap:10px;">
@@ -1977,6 +1980,15 @@ async function openAdminLoginDialog() {
 
   document.body.insertAdjacentHTML('beforeend', dialogHtml);
   const dialog = document.querySelector('#admin-login-dialog');
+  const passwordInput = document.querySelector('#admin-password');
+  const passwordToggle = document.querySelector('#btn-toggle-admin-password');
+  passwordToggle.onclick = () => {
+    const willShow = passwordInput.type === 'password';
+    passwordInput.type = willShow ? 'text' : 'password';
+    passwordToggle.innerHTML = willShow ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9 5 9 8a9.7 9.7 0 0 1-2 3.6"/><path d="M6.6 6.6C4.4 8 3 10.2 3 12c0 3 3.5 8 9 8a10.5 10.5 0 0 0 3.4-.6"/></svg>' : '👁';
+    passwordToggle.setAttribute('aria-label', willShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
+    passwordToggle.title = willShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน';
+  };
   document.querySelector('#btn-cancel-admin-login').onclick = () => dialog.remove();
   document.querySelector('#admin-login-form').onsubmit = async (event) => {
     event.preventDefault();

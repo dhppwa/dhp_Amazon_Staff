@@ -516,7 +516,6 @@ async function initializePrinterOnMainScreen() {
       cancelLabel: 'ปิด',
       onAction: () => {
         sessionWithoutPrinter = true;
-        startScanner({ allowWithoutPrinter: true });
       },
       onCancel: closeStaffApplication
     });
@@ -1538,9 +1537,11 @@ async function openHouseManagementModal() {
           </div>
 
           <div style="padding:1rem; overflow-x:auto;">
-            <table style="width:100%; border-collapse:collapse; font-size:0.9rem; text-align:left; min-width:700px;">
+            <table style="width:100%; border-collapse:collapse; font-size:0.9rem; text-align:left; min-width:900px;">
               <thead>
                 <tr style="background:#059669; color:#fff;">
+                  <th style="padding:0.75rem; text-align:center;">ประเภทผู้ใช้</th>
+                  <th style="padding:0.75rem; text-align:center;">สถานะเข้าใช้งาน</th>
                   <th style="padding:0.75rem;">ชื่อ-นามสกุล</th>
                   <th style="padding:0.75rem;">เบอร์โทรศัพท์</th>
                   <th style="padding:0.75rem;">รายละเอียด /บ้านเลขที่</th>
@@ -1552,7 +1553,7 @@ async function openHouseManagementModal() {
                 </tr>
               </thead>
               <tbody id="house-table-body">
-                <tr><td colspan="8" style="text-align:center; padding:2rem; color:#64748b;">กำลังโหลดข้อมูล...</td></tr>
+                <tr><td colspan="10" style="text-align:center; padding:2rem; color:#64748b;">กำลังโหลดข้อมูล...</td></tr>
               </tbody>
             </table>
           </div>
@@ -1639,8 +1640,17 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 <option value="1" ${Number(record?.accessLevel) === 1 ? 'selected' : ''}>แอดมิน</option>
               </select>
             </div>
+            ${isEdit ? `
+              <div>
+                <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะเข้าใช้งาน</label>
+                <select id="h-field-is-use" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
+                  <option value="1" ${record?.isUse ? 'selected' : ''}>เข้าใช้งานอยู่</option>
+                  <option value="0" ${!record?.isUse ? 'selected' : ''}>ไม่ได้เข้าใช้งาน</option>
+                </select>
+              </div>
+            ` : '<input type="hidden" id="h-field-is-use" value="0" />'}
 
-            <div style="display:flex; gap:0.5rem;">
+            <div id="h-fields-rights" style="display:flex; gap:0.5rem;">
               <div style="flex:1;">
                 <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ / วัน</label>
                 <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
@@ -1711,6 +1721,36 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   }
 
   const houseForm = document.querySelector('#house-record-form');
+  const accessLevelField = document.querySelector('#h-field-access-level');
+  const isUseField = document.querySelector('#h-field-is-use');
+  const rightsFields = document.querySelector('#h-fields-rights');
+  const updateRightsFieldsVisibility = () => {
+    const isAdmin = Number(accessLevelField.value) === 1;
+    rightsFields.hidden = isAdmin;
+    rightsFields.style.display = isAdmin ? 'none' : 'flex';
+
+    rightsFields.querySelectorAll('input').forEach((input) => {
+      if (isAdmin) {
+        if (!Object.hasOwn(input.dataset, 'beforeAdmin')) {
+          input.dataset.beforeAdmin = input.value;
+        }
+        input.value = '0';
+        input.disabled = true;
+        return;
+      }
+
+      input.disabled = false;
+      if (Object.hasOwn(input.dataset, 'beforeAdmin')) {
+        input.value = input.dataset.beforeAdmin;
+        delete input.dataset.beforeAdmin;
+      }
+
+    });
+  };
+
+  accessLevelField.addEventListener('change', updateRightsFieldsVisibility);
+  updateRightsFieldsVisibility();
+
   houseForm.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.target.matches('button, textarea')) return;
 
@@ -1727,7 +1767,29 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   houseForm.onsubmit = async (e) => {
     e.preventDefault();
     const id = document.querySelector('#h-field-id').value;
-    const quotaVal = parseInt(document.querySelector('#h-field-quotaPerDay').value, 10) || 1;
+    const accessLevel = parseInt(accessLevelField.value, 10) || 0;
+    const isAdmin = accessLevel === 1;
+    const quotaInput = document.querySelector('#h-field-quotaPerDay');
+    const usedInput = document.querySelector('#h-field-usedCount');
+    const allLimitInput = document.querySelector('#h-field-allLimit');
+    const quotaVal = isAdmin ? 0 : Number.parseInt(quotaInput.value, 10);
+    const usedCountVal = isAdmin ? 0 : Number.parseInt(usedInput.value, 10);
+    const allLimitVal = isAdmin ? 0 : Number.parseInt(allLimitInput.value, 10);
+
+    if (!isAdmin) {
+      const invalidInput = [quotaInput, usedInput, allLimitInput].find((input) => {
+        const value = Number(input.value);
+        if (input.value.trim() === '' || !Number.isInteger(value)) return true;
+        return input === usedInput ? value < 0 : value <= 0;
+      });
+      if (invalidInput) {
+        await showAppDialog('กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
+          title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
+        });
+        invalidInput.focus();
+        return;
+      }
+    }
     
     const payload = {
       id: id || null,
@@ -1737,10 +1799,10 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       project: document.querySelector('#h-field-project').value,
       quotaPerDay: quotaVal,
       Day_Limit: quotaVal,
-      accessLevel: parseInt(document.querySelector('#h-field-access-level').value, 10) || 0,
-      isUse: isEdit ? Boolean(record?.isUse) : false,
-      usedCount: parseInt(document.querySelector('#h-field-usedCount').value, 10) || 0,
-      allLimit: parseInt(document.querySelector('#h-field-allLimit').value, 10) || 10
+      accessLevel,
+      isUse: isEdit ? Number(isUseField.value) === 1 : false,
+      usedCount: usedCountVal,
+      allLimit: allLimitVal
     };
 
     if (!id) {
@@ -1762,7 +1824,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
 async function loadHouseTableData() {
   const tbody = document.querySelector('#house-table-body');
   if (!tbody) return;
-  tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:#64748b;">กำลังโหลดข้อมูล...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:2rem; color:#64748b;">กำลังโหลดข้อมูล...</td></tr>`;
 
   try {
     if (window.staffApi?.getHouseTableData) {
@@ -1772,7 +1834,7 @@ async function loadHouseTableData() {
     }
     renderHouseTable(currentHouseDataList);
   } catch (err) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:#dc2626;">เกิดข้อผิดพลาด: ${esc(err.message)}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:2rem; color:#dc2626;">เกิดข้อผิดพลาด: ${esc(err.message)}</td></tr>`;
   }
 }
 
@@ -1782,12 +1844,22 @@ function renderHouseTable(list) {
   if (!tbody) return;
 
   if (!list || list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; padding:2rem; color:#64748b;">ไม่พบข้อมูลสมาชิก</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; padding:2rem; color:#64748b;">ไม่พบข้อมูลสมาชิก</td></tr>`;
     return;
   }
 
   tbody.innerHTML = list.map(item => `
     <tr style="border-bottom:1px solid #e2e8f0;">
+      <td style="padding:0.75rem; text-align:center;">
+        <span style="display:inline-block; min-width:70px; padding:0.25rem 0.5rem; border-radius:999px; font-size:0.8rem; font-weight:bold; color:#fff; background:${Number(item.accessLevel) === 1 ? '#7c3aed' : '#0284c7'};">
+          ${Number(item.accessLevel) === 1 ? 'แอดมิน' : 'ผู้ใช้'}
+        </span>
+      </td>
+      <td style="padding:0.75rem; text-align:center;">
+        <span style="display:inline-block; min-width:48px; padding:0.25rem 0.5rem; border-radius:999px; font-size:0.8rem; font-weight:bold; color:#fff; background:${item.isUse ? '#16a34a' : '#64748b'};">
+          ${item.isUse ? 'เข้าใช้งานอยู่' : 'ไม่ได้เข้าใช้งาน'}
+        </span>
+      </td>
       <td style="padding:0.75rem;">${esc(item.name || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.phone || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.address || '-')}</td>

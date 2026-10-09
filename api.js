@@ -508,6 +508,23 @@ async getHistory(userPhone) {
       throw new Error('กรุณากรอกชื่อ-นามสกุล และ เบอร์โทรศัพท์ ให้ครบถ้วน');
     }
 
+    const accessLevelValue = Number(payload.accessLevel) === 1 ? 1 : 0;
+    if (accessLevelValue === 0) {
+      const rightsValues = [
+        Number(payload.quotaPerDay ?? payload.Day_Limit),
+        Number(payload.usedCount),
+        Number(payload.allLimit)
+      ];
+      const [dayLimit, usedCount, allLimit] = rightsValues;
+      if (
+        !Number.isInteger(dayLimit) || dayLimit <= 0 ||
+        !Number.isInteger(usedCount) || usedCount < 0 ||
+        !Number.isInteger(allLimit) || allLimit <= 0
+      ) {
+        throw new Error('สิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0');
+      }
+    }
+
     // ห้ามใช้เบอร์โทรศัพท์เดียวกันกับสมาชิกคนอื่น
     // กรณีแก้ไข จะไม่นับข้อมูลรายการเดิมของตนเองว่าเป็นเบอร์ซ้ำ
     let duplicatePhoneQuery = supabase
@@ -525,7 +542,7 @@ async getHistory(userPhone) {
       throw new Error('เบอร์โทรศัพท์นี้มีข้อมูลสมาชิกอยู่แล้ว กรุณาใช้เบอร์โทรศัพท์อื่น');
     }
 
-    const dayLimitValue = payload.quotaPerDay ?? payload.Day_Limit ?? 1;
+    const dayLimitValue = accessLevelValue === 1 ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
 
     const recordData = {
       Name: cleanName,
@@ -533,10 +550,10 @@ async getHistory(userPhone) {
       Detail: cleanString(payload.address),
       Remark: cleanString(payload.project),
       Day_Limit: dayLimitValue,  // ✅ บันทึกตรงตามค่าที่กรอก (หรือ quotaPerDay)
-      Access_Level: Number(payload.accessLevel) === 1 ? 1 : 0,
+      Access_Level: accessLevelValue,
       IsUse: payload.id ? Boolean(payload.isUse) : false,
-      All_Use: payload.usedCount ?? 0,
-      All_Limit: payload.allLimit ?? 10,
+      All_Use: accessLevelValue === 1 ? 0 : (payload.usedCount ?? 0),
+      All_Limit: accessLevelValue === 1 ? 0 : (payload.allLimit ?? 10),
       UpdateDate: new Date().toISOString()
     };
 

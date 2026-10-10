@@ -1967,7 +1967,7 @@ async function openAdminLoginDialog() {
         <label style="display:grid; gap:6px; color:#2c241d;">Password
           <span style="position:relative; display:block;">
             <input id="admin-password" name="password" type="password" autocomplete="current-password" required style="width:100%; padding-right:48px; box-sizing:border-box;">
-            <button id="btn-toggle-admin-password" type="button" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน" style="position:absolute; top:50%; right:7px; transform:translateY(-50%); width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; border-radius:9px; background:#e8efe4; color:#194832; font-size:18px; cursor:pointer;">👁</button>
+            <button id="btn-toggle-admin-password" type="button" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน" style="position:absolute; top:50%; right:7px; transform:translateY(-50%); width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; border-radius:9px; background:#e8efe4; color:#194832; font-size:18px; cursor:pointer;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </span>
         </label>
         <p id="admin-login-error" role="alert" style="display:none; margin:0; color:#b63f35; font-size:.85rem;"></p>
@@ -1985,7 +1985,7 @@ async function openAdminLoginDialog() {
   passwordToggle.onclick = () => {
     const willShow = passwordInput.type === 'password';
     passwordInput.type = willShow ? 'text' : 'password';
-    passwordToggle.innerHTML = willShow ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9 5 9 8a9.7 9.7 0 0 1-2 3.6"/><path d="M6.6 6.6C4.4 8 3 10.2 3 12c0 3 3.5 8 9 8a10.5 10.5 0 0 0 3.4-.6"/></svg>' : '👁';
+    passwordToggle.innerHTML = willShow ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 10.6a2 2 0 0 0 2.8 2.8"/><path d="M9.9 4.2A10.8 10.8 0 0 1 12 4c5.5 0 9 5 9 8a9.7 9.7 0 0 1-2 3.6"/><path d="M6.6 6.6C4.4 8 3 10.2 3 12c0 3 3.5 8 9 8a10.5 10.5 0 0 0 3.4-.6"/></svg>' : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
     passwordToggle.setAttribute('aria-label', willShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน');
     passwordToggle.title = willShow ? 'ซ่อนรหัสผ่าน' : 'แสดงรหัสผ่าน';
   };
@@ -2036,7 +2036,7 @@ function renderMainUI() {
         </button>
       </div>
 
-      <button id="btn-sales-report" type="button" style="position:fixed; left:50%; transform:translateX(-50%); bottom:20px; padding:.8rem 1.2rem; border:0; border-radius:999px; background:#fff; color:#0369a1; font-size:1rem; font-weight:700; box-shadow:0 3px 10px rgba(0,0,0,.18); cursor:pointer; z-index:1000;">
+      <button id="btn-sales-report" type="button" style="position:fixed; left:50%; transform:translateX(-50%); bottom:20px; min-height:52px; padding:.72rem .95rem; border:0; border-radius:999px; background:#0284c7; color:#fff; font-size:.9rem; font-weight:700; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:1000; display:flex; align-items:center; justify-content:center;">
         📊 รายงาน
       </button>
 

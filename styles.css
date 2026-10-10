@@ -113,6 +113,11 @@ body.dark-mode .secondary {
 }
 
 /* ธีมเดียวกับ PWA Amazon Client และหน้าจอแบบเปลี่ยนทั้งหน้า */
+html {
+  min-height: 100%;
+  background: #435f52;
+}
+
 :root {
   --green: #256b45;
   --deep: #194832;
@@ -234,14 +239,24 @@ body {
   left: calc(50% + (env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / 2) !important;
 }
 
+#btn-manage-member,
+#btn-sales-report,
+#btn-test-print {
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
 #btn-manage-member {
   left: calc(20px + env(safe-area-inset-left, 0px)) !important;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
+#btn-sales-report {
+  left: calc(50% + (env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / 2) !important;
 }
 
 #btn-test-print {
   right: calc(20px + env(safe-area-inset-right, 0px)) !important;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 #pwa-install-guide,

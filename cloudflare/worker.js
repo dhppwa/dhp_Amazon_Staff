@@ -12,7 +12,7 @@ function json(body, status = 200) {
 }
 
 const tableColumns = {
-  Cafe_Amazon_Promosion_House: ['ID', 'Detail', 'Remark', 'Name', 'Phone_No', 'Day_Limit', 'All_Limit', 'All_Use', 'LastUse_Date', 'IsUse', 'InsertDate', 'InsertUser', 'UpdateDate', 'UpdateUser', 'PassWord', 'Confirm_Coupon', 'Coupon_No', 'Product_ID', 'Access_Level'],
+  Cafe_Amazon_Promosion_House: ['ID', 'Detail', 'Remark', 'Name', 'Phone_No', 'Day_Limit', 'All_Limit', 'All_Use', 'LastUse_Date', 'IsUse', 'InsertDate', 'InsertUser', 'UpdateDate', 'UpdateUser', 'PassWord', 'Confirm_Coupon', 'Coupon_No', 'Product_ID', 'Access_Level', 'Username', 'LoginType', 'Email'],
   Cafe_Amazon_Bill: ['ID', 'Bill_No', 'Cafe_Amazon_PK', 'Product_Type', 'ItemDetail', 'Price', 'Discount', 'Change', 'InsertDate', 'IsUse', 'Coupon_No']
 };
 

@@ -120,10 +120,7 @@ window.staffApi = {
     return (data || []).length > 0;
   },
 
-  /**
-   * ตรวจสอบสิทธิ์ก่อนเปิดหน้าจัดการสมาชิก
-   * User ใช้เบอร์โทรศัพท์ที่บันทึกใน Phone_No
-   */
+  /** ตรวจสอบสิทธิ์ก่อนเปิดหน้าจัดการสมาชิกตาม LoginType ของบัญชี */
   async verifyAdminCredentials(username, password) {
     const supabase = getSupabase();
     const user = cleanString(username);
@@ -131,20 +128,29 @@ window.staffApi = {
 
     if (!user || !pass) throw new Error('กรุณากรอก User และ Password ให้ครบถ้วน');
 
-    const { data, error } = await supabase
+    const loginLookups = [
+      { column: 'Phone_No', value: user, loginType: 0 },
+      { column: 'Username', value: user, loginType: 1 },
+      { column: 'Email', value: user.toLowerCase(), loginType: 2 }
+    ];
+    const results = await Promise.all(loginLookups.map(item => supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Access_Level')
-      .eq('Phone_No', user)
+      .select('ID, Name, Phone_No, Username, Email, LoginType, Access_Level')
+      .eq(item.column, item.value)
+      .eq('LoginType', item.loginType)
       .eq('PassWord', pass)
       .eq('Access_Level', 1)
-      .maybeSingle();
-
-    if (error) throw new Error(`ตรวจสอบสิทธิ์ไม่สำเร็จ: ${error.message}`);
+      .maybeSingle()));
+    const failedResult = results.find(result => result.error);
+    if (failedResult) throw new Error(`ตรวจสอบสิทธิ์ไม่สำเร็จ: ${failedResult.error.message}`);
+    const matches = results.map(result => result.data).filter(Boolean);
+    if (matches.length > 1) throw new Error('พบข้อมูลเข้าสู่ระบบซ้ำ กรุณาติดต่อผู้ดูแลระบบ');
+    const data = matches[0];
     if (!data) throw new Error('User หรือ Password ไม่ถูกต้อง หรือบัญชีนี้ไม่มีสิทธิ์แอดมิน');
 
     await updateStaffUsage(data.Phone_No, true);
 
-    return { id: data.ID, name: data.Name, username: data.Phone_No, accessLevel: data.Access_Level };
+    return { id: data.ID, name: data.Name, username: data.Phone_No, phone: data.Phone_No, loginType: Number(data.LoginType ?? 0), accessLevel: data.Access_Level };
   },
 
   /**
@@ -425,7 +431,7 @@ async getHistory(userPhone) {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, IsUse, Access_Level, Confirm_Coupon, Product_ID')
+      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, IsUse, Access_Level, Confirm_Coupon, Product_ID, Username, LoginType, Email')
       .order('Name', { ascending: true });
 
     if (error) throw new Error(`ดึงข้อมูลตารางล้มเหลว: ${error.message}`);
@@ -440,7 +446,10 @@ async getHistory(userPhone) {
       allLimit: item.All_Limit ?? 10,
       quotaPerDay: item.Day_Limit ?? 1, // อ่านค่า Day_Limit จากเบส
       isUse: item.IsUse ?? false,
-      accessLevel: item.Access_Level ?? 0
+      accessLevel: item.Access_Level ?? 0,
+      username: item.Username || '',
+      loginType: Number(item.LoginType ?? 0),
+      email: item.Email || ''
     }));
   },
 
@@ -503,9 +512,18 @@ async getHistory(userPhone) {
     const supabase = getSupabase();
     const cleanPhone = cleanString(payload.phone);
     const cleanName = cleanString(payload.name);
+    const usernameValue = cleanString(payload.username);
+    const emailValue = cleanString(payload.email);
+    const loginTypeValue = [0, 1, 2].includes(Number(payload.loginType)) ? Number(payload.loginType) : 0;
 
     if (!cleanPhone || !cleanName) {
       throw new Error('กรุณากรอกชื่อ-นามสกุล และ เบอร์โทรศัพท์ ให้ครบถ้วน');
+    }
+    if (loginTypeValue === 1 && !usernameValue) {
+      throw new Error('กรุณากรอก Username สำหรับเข้าสู่ระบบ');
+    }
+    if (loginTypeValue === 2 && (!emailValue || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue))) {
+      throw new Error('กรุณากรอก Email ให้ถูกต้องสำหรับเข้าสู่ระบบ');
     }
 
     const accessLevelValue = Number(payload.accessLevel) === 1 ? 1 : 0;
@@ -542,11 +560,37 @@ async getHistory(userPhone) {
       throw new Error('เบอร์โทรศัพท์นี้มีข้อมูลสมาชิกอยู่แล้ว กรุณาใช้เบอร์โทรศัพท์อื่น');
     }
 
+    // Username และ Email ต้องไม่ซ้ำเมื่อมีการกรอก แต่อนุญาตให้เว้นว่างได้
+    if (usernameValue) {
+      let duplicateUsernameQuery = supabase
+        .from('Cafe_Amazon_Promosion_House')
+        .select('ID, Username')
+        .eq('Username', usernameValue);
+      if (payload.id) duplicateUsernameQuery = duplicateUsernameQuery.neq('ID', payload.id);
+      const { data: duplicateUsername, error: usernameError } = await duplicateUsernameQuery.maybeSingle();
+      if (usernameError) throw new Error(`ตรวจสอบ Username ซ้ำไม่สำเร็จ: ${usernameError.message}`);
+      if (duplicateUsername) throw new Error('Username นี้มีผู้ใช้งานแล้ว กรุณาใช้ Username อื่น');
+    }
+
+    if (emailValue) {
+      let duplicateEmailQuery = supabase
+        .from('Cafe_Amazon_Promosion_House')
+        .select('ID, Email')
+        .eq('Email', emailValue.toLowerCase());
+      if (payload.id) duplicateEmailQuery = duplicateEmailQuery.neq('ID', payload.id);
+      const { data: duplicateEmail, error: emailError } = await duplicateEmailQuery.maybeSingle();
+      if (emailError) throw new Error(`ตรวจสอบ Email ซ้ำไม่สำเร็จ: ${emailError.message}`);
+      if (duplicateEmail) throw new Error('Email นี้มีผู้ใช้งานแล้ว กรุณาใช้ Email อื่น');
+    }
+
     const dayLimitValue = accessLevelValue === 1 ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
 
     const recordData = {
       Name: cleanName,
       Phone_No: cleanPhone,
+      Username: usernameValue || null,
+      LoginType: loginTypeValue,
+      Email: emailValue ? emailValue.toLowerCase() : null,
       Detail: cleanString(payload.address),
       Remark: cleanString(payload.project),
       Day_Limit: dayLimitValue,  // ✅ บันทึกตรงตามค่าที่กรอก (หรือ quotaPerDay)

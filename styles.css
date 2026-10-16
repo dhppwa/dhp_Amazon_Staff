@@ -197,6 +197,7 @@ body {
 /* หน้าแรก Staff: เว้นจากแถบสถานะ/รอยบาก เพื่อไม่ให้โลโก้ถูกทับ */
 .staff-main-shell {
   padding-top: calc(24px + env(safe-area-inset-top, 0px)) !important;
+  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* เฉพาะหน้าจัดการข้อมูลสมาชิก: ใช้ความกว้างเต็มจอสำหรับตารางและข้อมูล */
@@ -239,24 +240,58 @@ body {
   left: calc(50% + (env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / 2) !important;
 }
 
+.staff-main-actions {
+  position: fixed;
+  left: calc(10px + env(safe-area-inset-left, 0px));
+  right: calc(10px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
 #btn-manage-member,
 #btn-sales-report,
 #btn-test-print {
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px)) !important;
+  grid-row: 1;
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  height: 52px !important;
   min-height: 52px;
+  padding-block: 0 !important;
+  max-width: calc(100% - 4px);
   box-sizing: border-box;
+  justify-self: center;
+  align-self: center;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  pointer-events: auto;
 }
 
 #btn-manage-member {
-  left: calc(20px + env(safe-area-inset-left, 0px)) !important;
+  grid-column: 1;
+  width: min(52px, calc(100% - 4px)) !important;
 }
 
 #btn-sales-report {
-  left: calc(50% + (env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px)) / 2) !important;
+  grid-column: 2;
+  width: auto;
+  padding-inline: 12px !important;
+  font-size: clamp(.76rem, 3.5vw, .9rem) !important;
 }
 
 #btn-test-print {
-  right: calc(20px + env(safe-area-inset-right, 0px)) !important;
+  grid-column: 3;
+  width: auto;
+  padding-inline: 12px !important;
+  font-size: clamp(.68rem, 3.05vw, .9rem) !important;
 }
 
 #pwa-install-guide,

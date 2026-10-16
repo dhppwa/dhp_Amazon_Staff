@@ -1602,6 +1602,7 @@ async function openHouseManagementModal() {
 // ===== หน้าฟอร์ม เพิ่ม / แก้ไข สมาชิก (ขยายแสดงผลแบบ Full Screen) =====
 function openHouseRecordModal(title, isEdit = false, record = null) {
   const needsFirstAdmin = !currentHouseDataList.some(item => Number(item.accessLevel) === 1);
+  const loginTypeValue = [0, 1, 2].includes(Number(record?.loginType)) ? Number(record.loginType) : 0;
   const modalHtml = `
     <div id="house-record-modal" class="staff-page">
       
@@ -1617,6 +1618,22 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
           <form id="house-record-form" style="padding:1.25rem; display:flex; flex-direction:column; gap:0.8rem;">
             <input type="hidden" id="h-field-id" value="${esc(record?.id || '')}" />
             
+            <fieldset style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
+              <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">เลือกชื่อสำหรับเข้าสู่ระบบ *</legend>
+              <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1rem;">
+                <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-login-type" value="1" ${loginTypeValue === 1 ? 'checked' : ''}> Username</label>
+                <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-login-type" value="0" ${loginTypeValue === 0 ? 'checked' : ''}> เบอร์โทร</label>
+                <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-login-type" value="2" ${loginTypeValue === 2 ? 'checked' : ''}> Email</label>
+              </div>
+            </fieldset>
+            <div>
+              <label style="font-size:0.85rem; font-weight:bold; color:#475569;">Username <span id="h-username-required" style="color:#dc2626;"></span></label>
+              <input type="text" id="h-field-username" value="${esc(record?.username || '')}" autocomplete="username" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
+            </div>
+            <div>
+              <label style="font-size:0.85rem; font-weight:bold; color:#475569;">Email <span id="h-email-required" style="color:#dc2626;"></span></label>
+              <input type="email" id="h-field-email" value="${esc(record?.email || '')}" autocomplete="email" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
+            </div>
             <div>
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">ชื่อ - นามสกุล *</label>
               <input type="text" id="h-field-name" value="${esc(record?.name || '')}" required style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
@@ -1724,6 +1741,17 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const accessLevelField = document.querySelector('#h-field-access-level');
   const isUseField = document.querySelector('#h-field-is-use');
   const rightsFields = document.querySelector('#h-fields-rights');
+  const loginTypeFields = [...document.querySelectorAll('input[name="h-login-type"]')];
+  const usernameField = document.querySelector('#h-field-username');
+  const emailField = document.querySelector('#h-field-email');
+  const getLoginType = () => Number(loginTypeFields.find(field => field.checked)?.value ?? 0);
+  const updateLoginFieldsRequirement = () => {
+    const loginType = getLoginType();
+    usernameField.required = loginType === 1;
+    emailField.required = loginType === 2;
+    document.querySelector('#h-username-required').textContent = loginType === 1 ? '*' : '';
+    document.querySelector('#h-email-required').textContent = loginType === 2 ? '*' : '';
+  };
   const updateRightsFieldsVisibility = () => {
     const isAdmin = Number(accessLevelField.value) === 1;
     rightsFields.hidden = isAdmin;
@@ -1749,7 +1777,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   };
 
   accessLevelField.addEventListener('change', updateRightsFieldsVisibility);
+  loginTypeFields.forEach(field => field.addEventListener('change', updateLoginFieldsRequirement));
   updateRightsFieldsVisibility();
+  updateLoginFieldsRequirement();
 
   houseForm.addEventListener('keydown', (e) => {
     if (e.key !== 'Enter' || e.target.matches('button, textarea')) return;
@@ -1768,6 +1798,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     e.preventDefault();
     const id = document.querySelector('#h-field-id').value;
     const accessLevel = parseInt(accessLevelField.value, 10) || 0;
+    const loginType = getLoginType();
     const isAdmin = accessLevel === 1;
     const quotaInput = document.querySelector('#h-field-quotaPerDay');
     const usedInput = document.querySelector('#h-field-usedCount');
@@ -1775,6 +1806,17 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const quotaVal = isAdmin ? 0 : Number.parseInt(quotaInput.value, 10);
     const usedCountVal = isAdmin ? 0 : Number.parseInt(usedInput.value, 10);
     const allLimitVal = isAdmin ? 0 : Number.parseInt(allLimitInput.value, 10);
+
+    if (loginType === 1 && !usernameField.value.trim()) {
+      await showAppDialog('กรุณากรอก Username สำหรับเข้าสู่ระบบ', { title: 'ข้อมูลเข้าสู่ระบบไม่ครบถ้วน' });
+      usernameField.focus();
+      return;
+    }
+    if (loginType === 2 && (!emailField.value.trim() || !emailField.checkValidity())) {
+      await showAppDialog('กรุณากรอก Email ให้ถูกต้องสำหรับเข้าสู่ระบบ', { title: 'ข้อมูลเข้าสู่ระบบไม่ถูกต้อง' });
+      emailField.focus();
+      return;
+    }
 
     if (!isAdmin) {
       const invalidInput = [quotaInput, usedInput, allLimitInput].find((input) => {
@@ -1795,6 +1837,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       id: id || null,
       name: document.querySelector('#h-field-name').value,
       phone: document.querySelector('#h-field-phone').value,
+      username: usernameField.value,
+      email: emailField.value,
+      loginType,
       address: document.querySelector('#h-field-address').value,
       project: document.querySelector('#h-field-project').value,
       quotaPerDay: quotaVal,
@@ -1959,10 +2004,9 @@ async function openAdminLoginDialog() {
       <form id="admin-login-form" style="width:min(100%,360px); display:grid; gap:14px; padding:22px; border-radius:18px; background:#fffaf4; box-shadow:0 20px 45px rgba(0,0,0,.28);">
         <div>
           <h2 style="margin:0; color:#194832; font-size:1.25rem;">ยืนยันสิทธิ์ผู้ดูแล</h2>
-          <p style="margin:5px 0 0; color:#766b5e; font-size:.9rem;">เข้าสู่ระบบด้วย User และ Password ของแอดมิน</p>
         </div>
-        <label style="display:grid; gap:6px; color:#2c241d;">User (เบอร์โทรศัพท์)
-          <input id="admin-username" name="username" type="text" inputmode="tel" autocomplete="username" required>
+        <label style="display:grid; gap:6px; color:#2c241d;">User (Username / เบอร์โทรศัพท์ / Email)
+          <input id="admin-username" name="username" type="text" autocomplete="username" required>
         </label>
         <label style="display:grid; gap:6px; color:#2c241d;">Password
           <span style="position:relative; display:block;">
@@ -2036,6 +2080,7 @@ function renderMainUI() {
         </button>
       </div>
 
+      <div class="staff-main-actions" aria-label="เมนูทางลัด">
       <button id="btn-sales-report" type="button" style="position:fixed; left:50%; transform:translateX(-50%); bottom:20px; min-height:52px; padding:.72rem .95rem; border:0; border-radius:999px; background:#0284c7; color:#fff; font-size:.9rem; font-weight:700; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:1000; display:flex; align-items:center; justify-content:center;">
         📊 รายงาน
       </button>
@@ -2088,6 +2133,7 @@ function renderMainUI() {
         ">
         🖨️ ทดสอบพิมพ์
       </button>
+      </div>
     </div>
   `;
 

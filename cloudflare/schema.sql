@@ -19,7 +19,10 @@ CREATE TABLE IF NOT EXISTS Cafe_Amazon_Promosion_House (
   Confirm_Coupon INTEGER NOT NULL DEFAULT 0,
   Coupon_No TEXT,
   Product_ID TEXT,
-  Access_Level INTEGER NOT NULL DEFAULT 0
+  Access_Level INTEGER NOT NULL DEFAULT 0,
+  Username TEXT,
+  LoginType INTEGER NOT NULL DEFAULT 0,
+  Email TEXT
 );
 
 CREATE TABLE IF NOT EXISTS Cafe_Amazon_Bill (
@@ -38,5 +41,11 @@ CREATE TABLE IF NOT EXISTS Cafe_Amazon_Bill (
 );
 
 CREATE INDEX IF NOT EXISTS idx_house_coupon ON Cafe_Amazon_Promosion_House(Coupon_No);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_house_username_unique
+  ON Cafe_Amazon_Promosion_House(lower(trim(Username)))
+  WHERE Username IS NOT NULL AND trim(Username) <> '';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_house_email_unique
+  ON Cafe_Amazon_Promosion_House(lower(trim(Email)))
+  WHERE Email IS NOT NULL AND trim(Email) <> '';
 CREATE INDEX IF NOT EXISTS idx_bill_member ON Cafe_Amazon_Bill(Cafe_Amazon_PK);
 CREATE INDEX IF NOT EXISTS idx_bill_date ON Cafe_Amazon_Bill(InsertDate);

@@ -60,6 +60,18 @@ function maskPhoneNumber(phone) {
   return str.slice(0, -4) + 'xxxx';
 }
 
+function getMemberLoginDisplay(member = {}, fallbackPhone = '', maskPhone = false) {
+  const loginType = Number(member.loginType ?? member.LoginType ?? 0);
+  if (loginType === 1) {
+    return { label: 'Username', value: member.username || member.Username || '-' };
+  }
+  if (loginType === 2) {
+    return { label: 'Email', value: member.email || member.Email || '-' };
+  }
+  const phone = member.phone || member.Phone_No || fallbackPhone || '-';
+  return { label: 'เบอร์โทร', value: maskPhone ? maskPhoneNumber(phone) : phone };
+}
+
 let appDialogTimer = null;
 function showAppDialog(message, {
   title = 'แจ้งเตือน',
@@ -1454,6 +1466,7 @@ function renderClientDetailPage(data) {
 
 // ===== หน้าประวัติการใช้สิทธิ์ (ขยายแสดงผลแบบ Full Screen) =====
 async function openHistoryModal(phone, clientData, onClose) {
+  const loginDisplay = getMemberLoginDisplay(clientData, phone, true);
   const modalHtml = `
     <div id="history-modal" class="staff-page">
       
@@ -1464,7 +1477,7 @@ async function openHistoryModal(phone, clientData, onClose) {
 
       <div style="max-width:600px; width:100%; margin:0 auto; padding:1.25rem; box-sizing:border-box; overflow-y:auto; flex:1;">
         <div style="border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">📜 ประวัติการใช้สิทธิ์ (${maskPhoneNumber(phone)})</h3>
+          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">📜 ประวัติการใช้สิทธิ์ (${esc(loginDisplay.value)})</h3>
           <div id="history-list-body">
             <p style="text-align:center; color:#666; padding:2rem 0;">กำลังดึงประวัติการใช้สิทธิ์...</p>
           </div>

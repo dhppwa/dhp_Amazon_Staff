@@ -240,7 +240,7 @@ async generateBillNo() {
 
   let { data, error } = await supabase
     .from('Cafe_Amazon_Promosion_House')
-    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID')
+    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email')
     .or(`Phone_No.eq.${cleanKey},Coupon_No.eq.${cleanKey}`)
     .maybeSingle();
 
@@ -248,7 +248,7 @@ async generateBillNo() {
   if (!data && !error && cleanFallbackPhone) {
     ({ data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID')
+      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email')
       .eq('Phone_No', cleanFallbackPhone)
       .maybeSingle());
   }
@@ -272,6 +272,9 @@ async generateBillNo() {
     id: data.ID,
     name: data.Name || 'ลูกค้า Cafe Amazon',
     phone: data.Phone_No,
+    username: data.Username || '',
+    loginType: Number(data.LoginType ?? 0),
+    email: data.Email || '',
     address: data.Detail || '-',
     project: data.Remark || '-',
     usedCount: data.All_Use ?? 0,

@@ -22,7 +22,10 @@ CREATE TABLE IF NOT EXISTS Cafe_Amazon_Promosion_House (
   Access_Level INTEGER NOT NULL DEFAULT 0,
   Username TEXT,
   LoginType INTEGER NOT NULL DEFAULT 0,
-  Email TEXT
+  Email TEXT,
+  LimitAll INTEGER NOT NULL DEFAULT 0 CHECK (LimitAll IN (0, 1)),
+  LimitType INTEGER NOT NULL DEFAULT 0,
+  Discount REAL NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS Cafe_Amazon_Bill (

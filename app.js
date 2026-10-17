@@ -10,6 +10,7 @@ let screenWakeLock = null;
 let printerStartupChecked = false;
 let scanWithoutPrinter = false;
 let sessionWithoutPrinter = false;
+const ADMIN_CREDENTIALS_KEY = 'amazonStaffRememberedAdminCredentials';
 
 // กันหน้าจอดับขณะใช้งาน Staff เพื่อไม่ให้ Bluetooth/การสแกนถูกระบบพักการทำงาน
 async function keepStaffScreenAwake() {
@@ -239,6 +240,9 @@ function createToastEl() {
 // ===== ระบบเครื่องพิมพ์ Bluetooth (BLE) =====
 const PRINT_WIDTH_DOTS = 384;
 const PRINTER_SETTINGS_KEY = 'staff-selected-bluetooth-printer';
+const PRINT_RECEIPT_MODE_KEY = 'staff-print-receipt-mode';
+const PRINT_RECEIPT_MODE_BOTH = 'customer-and-merchant';
+const PRINT_RECEIPT_MODE_MERCHANT_ONLY = 'merchant-only';
 const PRINTER_SERVICES = [
   '000018f0-0000-1000-8000-00805f9b34fb',
   '0000ff00-0000-1000-8000-00805f9b34fb',
@@ -283,6 +287,47 @@ function isSameSavedPrinter(device, saved) {
 function clearSavedPrinter() {
   localStorage.removeItem(PRINTER_SETTINGS_KEY);
   forgetPrinter();
+}
+
+function getPrintReceiptMode() {
+  return localStorage.getItem(PRINT_RECEIPT_MODE_KEY) === PRINT_RECEIPT_MODE_MERCHANT_ONLY
+    ? PRINT_RECEIPT_MODE_MERCHANT_ONLY
+    : PRINT_RECEIPT_MODE_BOTH;
+}
+
+function openPrintReceiptSettings() {
+  document.querySelector('#print-receipt-settings-dialog')?.remove();
+  const selectedMode = getPrintReceiptMode();
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="print-receipt-settings-dialog" style="position:fixed; inset:0; z-index:20000; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.55);">
+      <section role="dialog" aria-modal="true" aria-labelledby="print-receipt-settings-title" style="width:min(100%,440px); padding:22px; border-radius:16px; background:#fff; color:#1e293b; box-shadow:0 18px 42px rgba(0,0,0,.25);">
+        <h2 id="print-receipt-settings-title" style="margin:0 0 16px; font-size:1.2rem; color:#0284c7;">🧾 ตั้งค่าการพิมพ์</h2>
+        <fieldset style="margin:0; padding:14px; border:1px solid #cbd5e1; border-radius:10px;">
+          <legend style="padding:0 6px; font-weight:bold; color:#475569;">รูปแบบใบเสร็จ</legend>
+          <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
+            <input type="radio" name="print-receipt-mode" value="${PRINT_RECEIPT_MODE_BOTH}" ${selectedMode === PRINT_RECEIPT_MODE_BOTH ? 'checked' : ''} style="margin-top:4px;">
+            <span>พิมพ์บิลลูกค้า + ร้านค้า</span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
+            <input type="radio" name="print-receipt-mode" value="${PRINT_RECEIPT_MODE_MERCHANT_ONLY}" ${selectedMode === PRINT_RECEIPT_MODE_MERCHANT_ONLY ? 'checked' : ''} style="margin-top:4px;">
+            <span>พิมพ์เฉพาะร้านค้า</span>
+          </label>
+        </fieldset>
+        <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px;">
+          <button id="btn-cancel-print-receipt-settings" type="button" style="padding:9px 14px; border:0; border-radius:8px; background:#e2e8f0; color:#334155; font-weight:700;">ยกเลิก</button>
+          <button id="btn-save-print-receipt-settings" type="button" style="padding:9px 14px; border:0; border-radius:8px; background:#0284c7; color:#fff; font-weight:700;">บันทึก</button>
+        </div>
+      </section>
+    </div>`);
+
+  const dialog = document.querySelector('#print-receipt-settings-dialog');
+  document.querySelector('#btn-cancel-print-receipt-settings').onclick = () => dialog.remove();
+  document.querySelector('#btn-save-print-receipt-settings').onclick = () => {
+    const mode = document.querySelector('input[name="print-receipt-mode"]:checked')?.value || PRINT_RECEIPT_MODE_BOTH;
+    localStorage.setItem(PRINT_RECEIPT_MODE_KEY, mode);
+    dialog.remove();
+    showToast('บันทึกการตั้งค่าการพิมพ์เรียบร้อยแล้ว');
+  };
 }
 
 async function getConfiguredPrinterDevice() {
@@ -591,16 +636,43 @@ function makeWriter(ch) {
   return d => ch.writeValue(d);
 }
 
+// จดจำขนาดก้อนที่เครื่องพิมพ์รับได้ เพื่อให้ใบถัดไปเริ่มที่ความเร็วสูงสุดทันที
+let printerWriteChunkSize = 60;
+
 async function sendBytes(ch, bytes) {
   const write = makeWriter(ch);
-  let size = 60, i = 0;
+  const chunkSteps = [20, 40, 60, 100, 160, 240, 360, 480];
+  let size = printerWriteChunkSize;
+  let i = 0;
+  let successfulWrites = 0;
+
   while (i < bytes.length) {
     try {
       await write(bytes.slice(i, i + size));
       i += size;
-      await sleep(25);
+      successfulWrites += 1;
+
+      // ค่อย ๆ เร่งจนถึงขนาดสูงสุดที่ Bluetooth/เครื่องพิมพ์เครื่องนี้รับได้
+      if (successfulWrites >= 6) {
+        const nextSize = chunkSteps.find(step => step > size);
+        if (nextSize) size = nextSize;
+        successfulWrites = 0;
+      }
+
+      printerWriteChunkSize = size;
+
+      // writeValueWithResponse มีการควบคุมจังหวะจากอุปกรณ์อยู่แล้ว ส่วนแบบไม่รอ
+      // response ให้คืน event loop เป็นระยะโดยไม่ใส่ delay คงที่ทุกก้อน
+      if (successfulWrites === 0) await sleep(0);
     } catch (err) {
-      if (size > 20) { size = 20; await sleep(100); continue; }
+      const smallerSteps = chunkSteps.filter(step => step < size);
+      if (smallerSteps.length) {
+        size = smallerSteps[smallerSteps.length - 1];
+        printerWriteChunkSize = size;
+        successfulWrites = 0;
+        await sleep(15);
+        continue;
+      }
       throw err;
     }
   }
@@ -615,6 +687,13 @@ function formatCustomerName(name) {
     return `${parts[0]} xxxx`;
   }
   return name;
+}
+
+function formatDiscountPercent(value) {
+  const discount = Number(value ?? 0);
+  return Number.isFinite(discount)
+    ? discount.toLocaleString('th-TH', { maximumFractionDigits: 2 })
+    : '0';
 }
 
 function createReceiptLines(data, billNo) {
@@ -649,6 +728,7 @@ function createReceiptLines(data, billNo) {
     },
     { text: '1 สิทธิ์ (ใช้สิทธิ์ฟรี)' },
     { text: `${data.productName}`, bold: true },
+    ...(isMerchantCopy ? [{ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
     {
       leftText: `ใช้ไปแล้ว: ${data.usedCount + 1} สิทธิ์`,
       rightText: `คงเหลือ: ${data.allLimit - (data.usedCount + 1)} สิทธิ์`
@@ -660,6 +740,33 @@ function createReceiptLines(data, billNo) {
     original: buildBlock(false),
     copy: buildBlock(true)
   };
+}
+
+function renderReceiptPreviewCards(data) {
+  const receipts = createReceiptLines(data, 'PREVIEW');
+  const blocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY
+    ? [receipts.copy]
+    : [receipts.original, receipts.copy];
+
+  const renderLine = line => {
+    if (line.isReceiptHeader) {
+      return `<div style="position:relative; min-height:28px; display:flex; align-items:flex-end; justify-content:center; font-weight:700; font-size:12px;">
+        ${line.cornerText ? `<span style="position:absolute; top:4px; right:0; font-size:10px; font-weight:400; line-height:1.5;">${esc(line.cornerText)}</span>` : ''}
+        <span>${esc(line.text)}${line.headerDot ? ' ●' : ''}</span>
+      </div>`;
+    }
+    if (line.leftText !== undefined || line.rightText !== undefined) {
+      return `<div style="display:flex; justify-content:space-between; gap:7px; font-size:${line.fontSize ? '9px' : '10px'}; font-weight:${line.bold ? '700' : '400'};"><span>${esc(line.leftText || '')}</span><span style="text-align:right;">${esc(line.rightText || '')}</span></div>`;
+    }
+    return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:10px; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
+  };
+
+  return `<div style="margin-top:1rem; padding-top:1rem; border-top:1px solid #e2e8f0;">
+    <div style="margin-bottom:.65rem; font-weight:700; color:#475569;">พรีวิวใบเสร็จ (กระดาษ 58 มม.)</div>
+    <div style="display:flex; gap:12px; overflow-x:auto; padding:2px 2px 10px;">
+      ${blocks.map(lines => `<div style="width:58mm; min-width:58mm; padding:4mm 3mm; box-sizing:border-box; background:#fff; color:#000; border:1px solid #cbd5e1; box-shadow:0 3px 10px rgba(0,0,0,.08); line-height:1.45;">${lines.map(renderLine).join('')}</div>`).join('')}
+    </div>
+  </div>`;
 }
 
 async function printReceiptESC_POS(characteristic, lines) {
@@ -725,9 +832,10 @@ async function printReceiptESC_POS(characteristic, lines) {
         ctx.fillText('●', startX + brandWidth + gap, yPos + 5);
       }
       if (r.cornerText) {
-        ctx.font = `bold ${FONT_PX}px ${thaiFontStack}`;
+        ctx.font = `normal 22px ${thaiFontStack}`;
         ctx.textAlign = 'right';
-        ctx.fillText(r.cornerText, width - PAD, yPos - 15);
+        // เว้นด้านบนให้สระและวรรณยุกต์ภาษาไทยไม่ถูกขอบ Canvas ตัด
+        ctx.fillText(r.cornerText, width - PAD, yPos - 8);
       }
     } else if (r.isSplit) {
       ctx.textAlign = 'left';
@@ -749,7 +857,7 @@ async function printReceiptESC_POS(characteristic, lines) {
 
   const imgData = ctx.getImageData(0, 0, width, height).data;
   await sendBytes(characteristic, new Uint8Array([0x1B, 0x40, 0x1B, 0x33, 0x18]));
-  await sleep(50);
+  await sleep(5);
 
   const n1 = width & 0xFF, n2 = (width >> 8) & 0xFF;
   for (let y = 0; y < height; y += 24) {
@@ -776,7 +884,7 @@ async function printReceiptESC_POS(characteristic, lines) {
   }
 
   await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05, 0x1D, 0x56, 0x42, 0x00]));
-  await sleep(300);
+  await sleep(50);
 }
 
 async function runPrint(data, billNo) {
@@ -784,7 +892,9 @@ async function runPrint(data, billNo) {
   const characteristic = await connectBluetoothPrinter();
   const receipts = createReceiptLines(data, billNo);
 
-  await printReceiptESC_POS(characteristic, receipts.original);
+  if (getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH) {
+    await printReceiptESC_POS(characteristic, receipts.original);
+  }
   await printReceiptESC_POS(characteristic, receipts.copy);
 }
 
@@ -809,7 +919,9 @@ async function printTestReceipt() {
       allLimit: 1
     };
     const receipt = createReceiptLines(testData, `TEST-${Date.now().toString().slice(-6)}`);
-    await printReceiptESC_POS(characteristic, receipt.original);
+    if (getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH) {
+      await printReceiptESC_POS(characteristic, receipt.original);
+    }
     await printReceiptESC_POS(characteristic, receipt.copy);
     showToast('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว');
   } catch (error) {
@@ -1069,6 +1181,7 @@ function supportsBluetoothPrinting() {
 function renderAirPrintReceipt(data, billNo) {
   const printedAt = new Date().toLocaleString('th-TH');
   const remainingBenefits = Math.max(0, data.allLimit - (data.usedCount + 1));
+  const isMerchantOnly = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY;
   app.innerHTML = `
     <div class="staff-page airprint-page">
       <div class="staff-page-header">
@@ -1076,7 +1189,8 @@ function renderAirPrintReceipt(data, billNo) {
         <h3>ใบเสร็จรับสิทธิ์</h3>
       </div>
       <main id="airprint-receipt" class="airprint-receipt">
-        <h1>D House x Café Amazon</h1>
+        <h1>D House x Café Amazon${isMerchantOnly ? ' ●' : ''}</h1>
+        ${isMerchantOnly ? '<p style="margin-top:4px; text-align:right; font-weight:400; line-height:1.5;">(ร้านค้าเก็บ)</p>' : ''}
         <p>ใบเสร็จรับสิทธิ์คูปอง</p>
         <hr>
         <p class="airprint-date">${esc(printedAt)}</p>
@@ -1085,6 +1199,7 @@ function renderAirPrintReceipt(data, billNo) {
         <hr>
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
         <p class="airprint-product">${esc(data.productName)}</p>
+        ${isMerchantOnly ? `<p class="airprint-row"><span>ส่วนลด</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
         <p>ใช้ไปแล้ว: ${data.usedCount + 1} สิทธิ์</p>
         <p>คงเหลือ: ${remainingBenefits} สิทธิ์</p>
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
@@ -1230,7 +1345,104 @@ function showSalesReportDetail(bill) {
   document.querySelector('#btn-close-sales-report-detail').onclick = () => document.querySelector('#sales-report-detail-dialog')?.remove();
 }
 
-async function openSalesReport(dateValue = getLocalDateValue()) {
+function summarizeSalesReportBills(bills) {
+  const summaryMap = new Map();
+  bills.forEach(bill => {
+    const key = String(bill.productId || bill.Product_Type || bill.productName || '-');
+    const current = summaryMap.get(key) || {
+      productId: bill.productId || bill.Product_Type,
+      productName: bill.productName || '-',
+      productImage: bill.productImage,
+      quantity: 0,
+      total: 0
+    };
+    current.quantity += 1;
+    current.total += Number(bill.productPrice || 0);
+    summaryMap.set(key, current);
+  });
+  return [...summaryMap.values()].sort((a, b) => b.quantity - a.quantity || a.productName.localeCompare(b.productName, 'th'));
+}
+
+function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
+  const money = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const total = bills.reduce((sum, bill) => sum + Number(bill.productPrice || 0), 0);
+  const lines = [
+    { text: 'D House x Café Amazon', align: 'center', bold: true },
+    { text: 'รายงานการขาย', align: 'center', bold: true },
+    { text: `${formatReportDate(startDate)} - ${formatReportDate(endDate)}`, align: 'center', fontSize: 18 },
+    { text: mode === 'summary' ? 'สรุปรวมสินค้า' : 'รายละเอียด', align: 'center' },
+    { text: '--------------------------------' }
+  ];
+
+  if (mode === 'summary') {
+    summarizeSalesReportBills(bills).forEach(item => {
+      lines.push({ text: item.productName, bold: true });
+      lines.push({ leftText: `จำนวน ${item.quantity} รายการ`, rightText: `฿${money(item.total)}` });
+    });
+  } else {
+    bills.forEach(bill => {
+      const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
+      lines.push({ leftText: saleDate, rightText: `฿${money(bill.productPrice)}`, fontSize: 17 });
+      lines.push({ text: bill.productName || '-', bold: true });
+      lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
+      lines.push({ text: '--------------------------------' });
+    });
+  }
+
+  lines.push({ text: '--------------------------------' });
+  lines.push({ leftText: `รวม ${bills.length} รายการ`, rightText: `฿${money(total)}`, bold: true });
+  return lines;
+}
+
+function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
+  document.querySelector('#sales-report-print-dialog')?.remove();
+  const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
+  const previewRows = lines.map(line => {
+    if (line.leftText !== undefined || line.rightText !== undefined) {
+      return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:${line.fontSize ? '10px' : '11px'}; font-weight:${line.bold ? '700' : '400'};"><span>${esc(line.leftText || '')}</span><span style="text-align:right;">${esc(line.rightText || '')}</span></div>`;
+    }
+    return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '10px' : '11px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
+  }).join('');
+
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="sales-report-print-dialog" style="position:fixed; inset:0; z-index:50002; overflow:auto; padding:20px; background:rgba(15,23,42,.68);">
+      <section style="width:min(100%,420px); margin:0 auto; padding:18px; border-radius:16px; background:#f8fafc; box-shadow:0 22px 50px rgba(0,0,0,.3);">
+        <h2 style="margin:0 0 12px; color:#0284c7; font-size:1.15rem;">ตัวอย่างก่อนพิมพ์</h2>
+        <div id="sales-report-print-paper" style="width:58mm; max-width:100%; min-height:120px; margin:0 auto; padding:5mm 3mm; box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.45; box-shadow:0 3px 14px rgba(0,0,0,.14);">${previewRows}</div>
+        <div class="sales-report-print-actions" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
+          <button id="btn-close-sales-report-print" type="button" style="padding:10px 14px; border:0; border-radius:8px; background:#e2e8f0; color:#334155; font-weight:700;">ปิด</button>
+          <button id="btn-confirm-sales-report-print" type="button" style="padding:10px 14px; border:0; border-radius:8px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
+        </div>
+      </section>
+    </div>`);
+
+  const dialog = document.querySelector('#sales-report-print-dialog');
+  document.querySelector('#btn-close-sales-report-print').onclick = () => dialog.remove();
+  document.querySelector('#btn-confirm-sales-report-print').onclick = async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      if (!supportsBluetoothPrinting()) {
+        window.print();
+        return;
+      }
+      if (!getSavedPrinter()) throw new Error('ยังไม่ได้ตั้งค่าเครื่องพิมพ์ กรุณาตั้งค่าเครื่องพิมพ์ก่อน');
+      await ensurePrinterReadyFromUserAction();
+      showPrintLoadingDialog('กำลังพิมพ์รายงานการขาย...');
+      const characteristic = await connectBluetoothPrinter();
+      await printReceiptESC_POS(characteristic, lines);
+      removePrintLoadingDialog();
+      showToast('พิมพ์รายงานการขายเรียบร้อยแล้ว');
+    } catch (error) {
+      removePrintLoadingDialog();
+      showAppDialog(error.message || 'ไม่สามารถพิมพ์รายงานได้', { title: 'พิมพ์รายงานไม่สำเร็จ' });
+    } finally {
+      button.disabled = false;
+    }
+  };
+}
+
+async function openSalesReport(startDateValue = getLocalDateValue(), endDateValue = startDateValue) {
   app.classList.add('member-management-screen');
   app.innerHTML = `
     <div id="sales-report-modal" class="staff-page" style="min-height:100vh; color:#1e293b;">
@@ -1240,55 +1452,119 @@ async function openSalesReport(dateValue = getLocalDateValue()) {
       </div>
       <main style="flex:1; max-width:1000px; width:100%; margin:0 auto; padding:20px; box-sizing:border-box;">
         <section style="padding:16px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,.05);">
-          <label for="sales-report-date" style="display:block; margin-bottom:8px; font-weight:700;">เลือกวันที่</label>
-          <button id="sales-report-date" type="button" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
-            <span id="sales-report-date-label">${esc(formatReportDate(dateValue))}</span>
-            <span aria-hidden="true" style="font-size:1.25rem;">📅</span>
-          </button>
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:14px;">
+            <div>
+              <label for="sales-report-start-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่เริ่มต้น</label>
+              <button id="sales-report-start-date" type="button" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
+                <span id="sales-report-start-date-label">${esc(formatReportDate(startDateValue))}</span><span aria-hidden="true" style="font-size:1.25rem;">📅</span>
+              </button>
+            </div>
+            <div>
+              <label for="sales-report-end-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่สิ้นสุด</label>
+              <button id="sales-report-end-date" type="button" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
+                <span id="sales-report-end-date-label">${esc(formatReportDate(endDateValue))}</span><span aria-hidden="true" style="font-size:1.25rem;">📅</span>
+              </button>
+            </div>
+          </div>
+          <fieldset style="margin:0 0 14px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px;">
+            <legend style="padding:0 6px; font-weight:700;">รูปแบบรายงาน</legend>
+            <div style="display:flex; flex-wrap:wrap; gap:10px 22px;">
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="detail" checked> รายละเอียด</label>
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="summary"> สรุปรวมสินค้า</label>
+            </div>
+          </fieldset>
+          <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+            <button id="btn-load-sales-report" type="button" style="width:auto; min-width:0; padding:11px 18px; border:0; border-radius:8px; background:#0284c7; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">แสดงรายงาน</button>
+            <button id="btn-preview-sales-report" type="button" style="width:auto; min-width:0; padding:11px 18px; border:0; border-radius:8px; background:#7c3aed; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">🖨️ พรีวิว / พิมพ์</button>
+          </div>
           <div id="sales-report-content" aria-live="polite"></div>
         </section>
       </main>
     </div>`;
 
   document.querySelector('#btn-close-sales-report').onclick = renderMainUI;
-  let selectedReportDate = dateValue;
-  const loadReport = async () => {
-    const selectedDate = selectedReportDate;
+  let selectedStartDate = startDateValue;
+  let selectedEndDate = endDateValue;
+  let reportBills = [];
+  let loadedStartDate = '';
+  let loadedEndDate = '';
+
+  const renderReport = () => {
     const content = document.querySelector('#sales-report-content');
+    const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'detail';
+    const total = reportBills.reduce((sum, bill) => sum + Number(bill.productPrice || 0), 0);
+    const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;"><span>${reportBills.length} รายการ</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
+
+    if (reportMode === 'summary') {
+      const rows = summarizeSalesReportBills(reportBills);
+      content.innerHTML = header + (rows.length ? `<div style="display:grid; gap:10px;">${rows.map(item => `
+        <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
+          ${renderProductImage(item.productId, item.productName, item.productImage, 64)}
+          <div style="min-width:0; flex:1;">
+            <div style="font-weight:700; color:#1e293b;">${esc(item.productName)}</div>
+            <div style="display:flex; justify-content:space-between; gap:12px; margin-top:7px; color:#475569;"><span>จำนวน ${item.quantity.toLocaleString('th-TH')} รายการ</span><strong style="color:#059669;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+          </div>
+        </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
+      return;
+    }
+
+    content.innerHTML = header + (reportBills.length ? `<div style="display:grid; gap:10px;">${reportBills.map((bill, index) => `
+      <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
+        ${renderProductImage(bill.Product_Type || bill.productId, bill.productName, bill.productImage, 64)}
+        <div style="min-width:0; flex:1;">
+          <div style="display:flex; justify-content:space-between; gap:12px; font-weight:700;"><span>${esc(bill.Bill_No || '-')}</span><span>฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <div style="margin-top:5px; color:#334155;">${esc(bill.productName || '-')}</div>
+          <div style="margin-top:5px; color:#475569; font-size:.88rem;">${esc(bill.memberName || '-')} · ${esc(maskPhoneNumber(bill.memberPhone))}</div>
+          <div style="margin-top:4px; color:#64748b; font-size:.86rem;">${bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-'}</div>
+          <button type="button" data-sales-detail-index="${index}" style="margin-top:8px; padding:7px 10px; border:1px solid #bae6fd; border-radius:8px; background:#f0f9ff; color:#0369a1; font-weight:700;">แสดงข้อมูลเพิ่มเติม</button>
+        </div>
+      </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
+    content.querySelectorAll('[data-sales-detail-index]').forEach(button => {
+      button.onclick = () => showSalesReportDetail(reportBills[Number(button.dataset.salesDetailIndex)]);
+    });
+  };
+
+  const loadReport = async () => {
+    const content = document.querySelector('#sales-report-content');
+    if (selectedStartDate > selectedEndDate) {
+      await showAppDialog('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด', { title: 'ช่วงวันที่ไม่ถูกต้อง' });
+      return;
+    }
     content.innerHTML = '<p style="text-align:center; color:#64748b;">กำลังโหลดรายงาน...</p>';
     try {
-      const bills = await window.staffApi.getSalesReport(selectedDate);
-      const total = bills.reduce((sum, bill) => sum + Number(bill.productPrice || 0), 0);
-      content.innerHTML = `
-        <div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;">
-          <span>${bills.length} รายการ</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
-        </div>
-        ${bills.length ? `<div style="display:grid; gap:10px;">${bills.map((bill, index) => `
-          <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
-            ${renderProductImage(bill.Product_Type || bill.productId, bill.productName, bill.productImage, 64)}
-            <div style="min-width:0; flex:1;">
-              <div style="display:flex; justify-content:space-between; gap:12px; font-weight:700;"><span>${esc(bill.Bill_No || '-')}</span><span>฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-              <div style="margin-top:5px; color:#334155;">${esc(bill.productName || '-')}</div>
-              <div style="margin-top:5px; color:#475569; font-size:.88rem;">${esc(bill.memberName || '-')} · ${esc(maskPhoneNumber(bill.memberPhone))}</div>
-              <div style="margin-top:4px; color:#64748b; font-size:.86rem;">${bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-'}</div>
-              <button type="button" data-sales-detail-index="${index}" style="margin-top:8px; padding:7px 10px; border:1px solid #bae6fd; border-radius:8px; background:#f0f9ff; color:#0369a1; font-weight:700;">แสดงข้อมูลเพิ่มเติม</button>
-            </div>
-          </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในวันที่เลือก</p>'}`;
-      content.querySelectorAll('[data-sales-detail-index]').forEach(button => {
-        button.onclick = () => showSalesReportDetail(bills[Number(button.dataset.salesDetailIndex)]);
-      });
+      reportBills = await window.staffApi.getSalesReport(selectedStartDate, selectedEndDate);
+      loadedStartDate = selectedStartDate;
+      loadedEndDate = selectedEndDate;
+      renderReport();
+      return true;
     } catch (error) {
       content.innerHTML = '';
       showAppDialog(error.message || 'ไม่สามารถโหลดรายงานการขายได้', { title: 'รายงานการขาย' });
+      return false;
     }
   };
-  document.querySelector('#sales-report-date').onclick = async () => {
-    const confirmedDate = await showReportDatePicker(selectedReportDate);
+  document.querySelector('#sales-report-start-date').onclick = async () => {
+    const confirmedDate = await showReportDatePicker(selectedStartDate);
     if (!confirmedDate) return;
-    selectedReportDate = confirmedDate;
-    document.querySelector('#sales-report-date-label').textContent = formatReportDate(selectedReportDate);
-    await loadReport();
+    selectedStartDate = confirmedDate;
+    document.querySelector('#sales-report-start-date-label').textContent = formatReportDate(selectedStartDate);
   };
+  document.querySelector('#sales-report-end-date').onclick = async () => {
+    const confirmedDate = await showReportDatePicker(selectedEndDate);
+    if (!confirmedDate) return;
+    selectedEndDate = confirmedDate;
+    document.querySelector('#sales-report-end-date-label').textContent = formatReportDate(selectedEndDate);
+  };
+  document.querySelector('#btn-load-sales-report').onclick = loadReport;
+  document.querySelector('#btn-preview-sales-report').onclick = async () => {
+    if (loadedStartDate !== selectedStartDate || loadedEndDate !== selectedEndDate) {
+      const loaded = await loadReport();
+      if (!loaded) return;
+    }
+    const mode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'detail';
+    showSalesReportPrintPreview(selectedStartDate, selectedEndDate, mode, reportBills);
+  };
+  document.querySelectorAll('input[name="sales-report-mode"]').forEach(field => field.onchange = renderReport);
   await loadReport();
 }
 
@@ -1360,6 +1636,7 @@ function renderClientDetailPage(data) {
             <p style="margin:0;"><strong>หมายเหตุ:</strong> ${esc(data.project || '-')}</p>
             <p style="margin:0;"><strong>คูปอง:</strong> <span style="color:#059669; font-weight:bold;">${esc(data.couponNo || '-')}</span></p>
             <p style="margin:0;"><strong>สินค้า:</strong> <span style="color:#0284c7; font-weight:bold;">${esc(data.productName)}</span></p>
+            <p style="margin:0;"><strong>ส่วนลด:</strong> <span style="color:#dc2626; font-weight:bold;">${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</span></p>
           </div>
 
           <div style="display:flex; justify-content:center; margin:1rem 0;">
@@ -1369,6 +1646,7 @@ function renderClientDetailPage(data) {
           <p style="margin:0.75rem 0 0.25rem 0; font-size:0.95rem; color:#334155;">
             <strong>สิทธิ์ที่ใช้ไป:</strong> <span style="color:#d97706; font-weight:bold;">${data.usedCount}</span> / ${data.allLimit} ครั้ง
           </p>
+          ${renderReceiptPreviewCards(data)}
           
           <div style="margin-top:1.25rem; display:flex; flex-direction:column; gap:0.6rem;">
             ${
@@ -1423,7 +1701,8 @@ function renderClientDetailPage(data) {
 
       try {
         // ต้องผ่านการตรวจ Coupon_No ล่าสุดจากฐานข้อมูลก่อน จึงค่อยเชื่อมต่อเครื่องพิมพ์
-        await window.staffApi.validateCouponForRedeem(data.phone, data.couponNo);
+        const latestCoupon = await window.staffApi.validateCouponForRedeem(data.phone, data.couponNo);
+        data.discount = Number(latestCoupon?.discount ?? data.discount ?? 0);
 
         updatePrintLoadingMessage('กำลังสร้างเลขบิล...');
         const generatedBillNo = await window.staffApi.generateBillNo();
@@ -1545,6 +1824,7 @@ async function openHouseManagementModal() {
             <div style="display:flex; gap:0.5rem;">
               <button id="btn-house-refresh" style="padding:0.6rem 1rem; background:#475569; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🔄 รีเฟรช</button>
               <button id="btn-printer-settings" style="padding:0.6rem 1rem; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🖨️ ตั้งค่าเครื่องพิมพ์</button>
+              <button id="btn-print-receipt-settings" style="padding:0.6rem 1rem; background:#7c3aed; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🧾 ตั้งค่าการพิมพ์</button>
               <button id="btn-open-add-house" style="padding:0.6rem 1rem; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">➕ เพิ่มข้อมูลใหม่</button>
             </div>
           </div>
@@ -1599,6 +1879,7 @@ async function openHouseManagementModal() {
   };
 
   document.querySelector('#btn-printer-settings').onclick = openPrinterSettings;
+  document.querySelector('#btn-print-receipt-settings').onclick = openPrintReceiptSettings;
 
   document.querySelector('#btn-house-search').onclick = filterHouseTable;
   document.querySelector('#house-search-input').onkeyup = (e) => {
@@ -1663,6 +1944,45 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">หมายเหตุ</label>
               <input type="text" id="h-field-project" value="${esc(record?.project || '')}" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
             </div>
+            <fieldset id="h-limit-settings" style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
+              <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">การจำกัดสิทธิ์ทั้งหมด</legend>
+              <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1.25rem;">
+                <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-limit-all" value="0" ${!record?.limitAll ? 'checked' : ''}> จำกัดสิทธิ์</label>
+                <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-limit-all" value="1" ${record?.limitAll ? 'checked' : ''}> ไม่จำกัด</label>
+              </div>
+              <div style="display:flex; align-items:center; gap:0.5rem; margin-top:0.75rem; color:#475569; font-size:0.9rem; font-weight:bold;">
+                <span>ทั้งหมด</span>
+                <input type="number" id="h-field-allLimit" value="${isEdit ? (record?.allLimit ?? '') : ''}" min="1" aria-label="สิทธิ์ทั้งหมด" style="width:110px; max-width:45%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; text-align:center;" />
+                <span>สิทธิ์</span>
+              </div>
+            </fieldset>
+
+            <div id="h-fields-rights" style="display:flex; gap:0.5rem;">
+              <div style="flex:1.35;">
+                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
+                <div style="display:flex; align-items:stretch;">
+                  <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
+                  <select id="h-field-limitType" aria-label="รอบการจำกัดสิทธิ์" style="width:auto; padding:0.6rem 0.4rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.9rem;">
+                    <option value="0" ${Number(record?.limitType ?? 0) === 0 ? 'selected' : ''}>วัน</option>
+                    <option value="1" ${Number(record?.limitType ?? 0) === 1 ? 'selected' : ''}>เดือน</option>
+                    <option value="2" ${Number(record?.limitType ?? 0) === 2 ? 'selected' : ''}>ปี</option>
+                  </select>
+                </div>
+              </div>
+              <div style="flex:1;">
+                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ที่ใช้แล้ว</label>
+                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; background:#f1f5f9; color:#475569; cursor:not-allowed;" />
+              </div>
+            </div>
+
+            <div>
+              <label style="font-size:0.85rem; font-weight:bold; color:#475569;">ส่วนลด</label>
+              <div style="display:flex; align-items:stretch;">
+                <input type="number" id="h-field-discount" value="${esc(record?.discount ?? 0)}" min="0" max="100" step="0.01" required inputmode="decimal" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
+                <span aria-hidden="true" style="display:flex; align-items:center; padding:0 0.8rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#f1f5f9; color:#475569; font-weight:bold;">%</span>
+              </div>
+            </div>
+
             <div>
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะผู้ใช้งาน</label>
               <select id="h-field-access-level" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
@@ -1679,21 +1999,6 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 </select>
               </div>
             ` : '<input type="hidden" id="h-field-is-use" value="0" />'}
-
-            <div id="h-fields-rights" style="display:flex; gap:0.5rem;">
-              <div style="flex:1;">
-                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ / วัน</label>
-                <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
-              </div>
-              <div style="flex:1;">
-                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ที่ใช้แล้ว</label>
-                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? '') : ''}" min="0" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
-              </div>
-              <div style="flex:1;">
-                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ทั้งหมด</label>
-                <input type="number" id="h-field-allLimit" value="${isEdit ? (record?.allLimit ?? '') : ''}" min="1" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
-              </div>
-            </div>
 
             <div style="margin-top:0.4rem; padding:0.85rem; background:#faf5ff; border-radius:8px; border:2px solid #a855f7; box-shadow:0 2px 8px rgba(126,34,206,0.12);">
               <p style="margin:0; font-size:0.85rem; color:#6b21a8; font-weight:600;">
@@ -1754,10 +2059,17 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const accessLevelField = document.querySelector('#h-field-access-level');
   const isUseField = document.querySelector('#h-field-is-use');
   const rightsFields = document.querySelector('#h-fields-rights');
+  const limitSettings = document.querySelector('#h-limit-settings');
   const loginTypeFields = [...document.querySelectorAll('input[name="h-login-type"]')];
+  const limitAllFields = [...document.querySelectorAll('input[name="h-limit-all"]')];
+  const limitTypeField = document.querySelector('#h-field-limitType');
   const usernameField = document.querySelector('#h-field-username');
   const emailField = document.querySelector('#h-field-email');
+  const discountField = document.querySelector('#h-field-discount');
+  const allLimitField = document.querySelector('#h-field-allLimit');
   const getLoginType = () => Number(loginTypeFields.find(field => field.checked)?.value ?? 0);
+  const getLimitAll = () => Number(limitAllFields.find(field => field.checked)?.value ?? 0) === 1;
+  const getLimitType = () => Number(limitTypeField.value ?? 0);
   const updateLoginFieldsRequirement = () => {
     const loginType = getLoginType();
     usernameField.required = loginType === 1;
@@ -1765,8 +2077,31 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     document.querySelector('#h-username-required').textContent = loginType === 1 ? '*' : '';
     document.querySelector('#h-email-required').textContent = loginType === 2 ? '*' : '';
   };
+  const updateLimitAllState = () => {
+    const isUnlimited = getLimitAll();
+    if (isUnlimited) {
+      if (allLimitField.value !== '0') allLimitField.dataset.beforeUnlimited = allLimitField.value;
+      allLimitField.value = '0';
+      allLimitField.readOnly = true;
+      allLimitField.setAttribute('aria-readonly', 'true');
+      allLimitField.style.background = '#f1f5f9';
+      allLimitField.style.color = '#475569';
+      allLimitField.style.cursor = 'not-allowed';
+      return;
+    }
+
+    allLimitField.readOnly = false;
+    allLimitField.removeAttribute('aria-readonly');
+    if (allLimitField.value === '0') allLimitField.value = allLimitField.dataset.beforeUnlimited || '';
+    delete allLimitField.dataset.beforeUnlimited;
+    allLimitField.style.background = '#fff';
+    allLimitField.style.color = '';
+    allLimitField.style.cursor = '';
+  };
   const updateRightsFieldsVisibility = () => {
     const isAdmin = Number(accessLevelField.value) === 1;
+    limitSettings.hidden = isAdmin;
+    limitSettings.style.display = isAdmin ? 'none' : 'block';
     rightsFields.hidden = isAdmin;
     rightsFields.style.display = isAdmin ? 'none' : 'flex';
 
@@ -1787,10 +2122,25 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       }
 
     });
+    limitSettings.querySelectorAll('input').forEach((input) => {
+      input.disabled = isAdmin;
+    });
+    updateLimitAllState();
   };
 
   accessLevelField.addEventListener('change', updateRightsFieldsVisibility);
   loginTypeFields.forEach(field => field.addEventListener('change', updateLoginFieldsRequirement));
+  limitAllFields.forEach(field => field.addEventListener('change', updateLimitAllState));
+  discountField.addEventListener('change', async () => {
+    const value = Number.parseFloat(discountField.value);
+    if (Number.isFinite(value) && value > 100) {
+      await showAppDialog('ส่วนลดต้องไม่เกิน 100 เปอร์เซ็นต์ ไม่สามารถทำรายการต่อได้', {
+        title: 'ส่วนลดเกินกำหนด'
+      });
+      discountField.focus();
+      discountField.select();
+    }
+  });
   updateRightsFieldsVisibility();
   updateLoginFieldsRequirement();
 
@@ -1812,13 +2162,23 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const id = document.querySelector('#h-field-id').value;
     const accessLevel = parseInt(accessLevelField.value, 10) || 0;
     const loginType = getLoginType();
+    const limitType = getLimitType();
+    const limitAll = getLimitAll();
     const isAdmin = accessLevel === 1;
     const quotaInput = document.querySelector('#h-field-quotaPerDay');
     const usedInput = document.querySelector('#h-field-usedCount');
     const allLimitInput = document.querySelector('#h-field-allLimit');
+    const discountInput = document.querySelector('#h-field-discount');
     const quotaVal = isAdmin ? 0 : Number.parseInt(quotaInput.value, 10);
     const usedCountVal = isAdmin ? 0 : Number.parseInt(usedInput.value, 10);
-    const allLimitVal = isAdmin ? 0 : Number.parseInt(allLimitInput.value, 10);
+    const allLimitVal = isAdmin || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
+    const discountVal = Number.parseFloat(discountInput.value);
+
+    if (!Number.isFinite(discountVal) || discountVal < 0 || discountVal > 100) {
+      await showAppDialog('กรุณากรอกส่วนลดตั้งแต่ 0 ถึง 100 เปอร์เซ็นต์', { title: 'ส่วนลดไม่ถูกต้อง' });
+      discountInput.focus();
+      return;
+    }
 
     if (loginType === 1 && !usernameField.value.trim()) {
       await showAppDialog('กรุณากรอก Username สำหรับเข้าสู่ระบบ', { title: 'ข้อมูลเข้าสู่ระบบไม่ครบถ้วน' });
@@ -1832,13 +2192,16 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     }
 
     if (!isAdmin) {
-      const invalidInput = [quotaInput, usedInput, allLimitInput].find((input) => {
+      const inputsToValidate = limitAll ? [quotaInput, usedInput] : [quotaInput, usedInput, allLimitInput];
+      const invalidInput = inputsToValidate.find((input) => {
         const value = Number(input.value);
         if (input.value.trim() === '' || !Number.isInteger(value)) return true;
         return input === usedInput ? value < 0 : value <= 0;
       });
       if (invalidInput) {
-        await showAppDialog('กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
+        await showAppDialog(limitAll
+          ? 'กรุณากรอกสิทธิ์ตามช่วงเวลาให้มากกว่า 0 และสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0'
+          : 'กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
           title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
         });
         invalidInput.focus();
@@ -1853,6 +2216,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       username: usernameField.value,
       email: emailField.value,
       loginType,
+      limitAll,
+      limitType,
       address: document.querySelector('#h-field-address').value,
       project: document.querySelector('#h-field-project').value,
       quotaPerDay: quotaVal,
@@ -1860,7 +2225,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       accessLevel,
       isUse: isEdit ? Number(isUseField.value) === 1 : false,
       usedCount: usedCountVal,
-      allLimit: allLimitVal
+      allLimit: allLimitVal,
+      discount: discountVal
     };
 
     if (!id) {
@@ -2012,6 +2378,20 @@ async function openAdminLoginDialog() {
     return;
   }
 
+  let rememberedAdminCredentials = null;
+  try {
+    rememberedAdminCredentials = JSON.parse(localStorage.getItem(ADMIN_CREDENTIALS_KEY) || 'null');
+  } catch (_) {
+    localStorage.removeItem(ADMIN_CREDENTIALS_KEY);
+  }
+  const rememberedUsername = String(rememberedAdminCredentials?.username || '');
+  const rememberedPassword = String(rememberedAdminCredentials?.password || '');
+  const escapeAttribute = value => value
+    .replaceAll('&', '&amp;')
+    .replaceAll('"', '&quot;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;');
+
   const dialogHtml = `
     <div id="admin-login-dialog" style="position:fixed; inset:0; z-index:20000; display:grid; place-items:center; padding:20px; background:rgba(20,40,29,.62);">
       <form id="admin-login-form" style="width:min(100%,360px); display:grid; gap:14px; padding:22px; border-radius:18px; background:#fffaf4; box-shadow:0 20px 45px rgba(0,0,0,.28);">
@@ -2019,13 +2399,17 @@ async function openAdminLoginDialog() {
           <h2 style="margin:0; color:#194832; font-size:1.25rem;">ยืนยันสิทธิ์ผู้ดูแล</h2>
         </div>
         <label style="display:grid; gap:6px; color:#2c241d;">User (Username / เบอร์โทรศัพท์ / Email)
-          <input id="admin-username" name="username" type="text" autocomplete="username" required>
+          <input id="admin-username" name="username" type="text" autocomplete="username" value="${escapeAttribute(rememberedUsername)}" required>
         </label>
         <label style="display:grid; gap:6px; color:#2c241d;">Password
           <span style="position:relative; display:block;">
-            <input id="admin-password" name="password" type="password" autocomplete="current-password" required style="width:100%; padding-right:48px; box-sizing:border-box;">
+            <input id="admin-password" name="password" type="password" autocomplete="current-password" value="${escapeAttribute(rememberedPassword)}" required style="width:100%; padding-right:48px; box-sizing:border-box;">
             <button id="btn-toggle-admin-password" type="button" aria-label="แสดงรหัสผ่าน" title="แสดงรหัสผ่าน" style="position:absolute; top:50%; right:7px; transform:translateY(-50%); width:36px; height:36px; display:grid; place-items:center; padding:0; border:0; border-radius:9px; background:#e8efe4; color:#194832; font-size:18px; cursor:pointer;"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
           </span>
+        </label>
+        <label style="display:flex; align-items:center; gap:9px; width:max-content; max-width:100%; color:#2c241d; cursor:pointer; user-select:none;">
+          <input id="remember-admin-password" name="rememberPassword" type="checkbox" ${rememberedAdminCredentials ? 'checked' : ''} style="width:18px; height:18px; margin:0; accent-color:#256b45;">
+          <span>จำรหัส</span>
         </label>
         <p id="admin-login-error" role="alert" style="display:none; margin:0; color:#b63f35; font-size:.85rem;"></p>
         <div style="display:flex; justify-content:flex-end; gap:10px;">
@@ -2057,7 +2441,14 @@ async function openAdminLoginDialog() {
 
     try {
       const formData = new FormData(event.currentTarget);
-      adminSession = await window.staffApi.verifyAdminCredentials(formData.get('username'), formData.get('password'));
+      const username = String(formData.get('username') || '').trim();
+      const password = String(formData.get('password') || '');
+      adminSession = await window.staffApi.verifyAdminCredentials(username, password);
+      if (formData.get('rememberPassword')) {
+        localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify({ username, password }));
+      } else {
+        localStorage.removeItem(ADMIN_CREDENTIALS_KEY);
+      }
       dialog.remove();
       openHouseManagementModal();
     } catch (error) {

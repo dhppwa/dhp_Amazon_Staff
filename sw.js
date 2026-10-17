@@ -1,20 +1,34 @@
-// sw.js ( Service Worker แบบพื้นฐานเพื่อให้ PWA ติดตั้งบน Android ได้ )
-const CACHE_NAME = 'dwallet-v52';
+const CACHE_PREFIX = 'amazon-staff-';
+const CACHE_NAME = `${CACHE_PREFIX}v73`;
 
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+self.addEventListener('install', event => {
+  event.waitUntil(self.skipWaiting());
 });
 
-self.addEventListener('activate', (event) => {
-  event.waitUntil(clients.claim());
+self.addEventListener('activate', event => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME).map(key => caches.delete(key)));
+    await self.clients.claim();
+  })());
 });
 
-self.addEventListener('fetch', (event) => {
-  // ดึงข้อมูลผ่าน Network ตามปกติอย่างถูกต้อง
-  event.respondWith(
-    fetch(event.request).catch(() => {
-      // กรณี Offline หรือ Fetch ล้มเหลว
-      return caches.match(event.request);
-    })
-  );
+self.addEventListener('fetch', event => {
+  if (event.request.method !== 'GET') return;
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin) return;
+
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    try {
+      const response = await fetch(new Request(event.request, { cache: 'no-store' }));
+      if (response.ok) await cache.put(event.request, response.clone());
+      return response;
+    } catch (error) {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+      if (event.request.mode === 'navigate') return cache.match('./index.html');
+      throw error;
+    }
+  })());
 });

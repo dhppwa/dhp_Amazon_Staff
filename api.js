@@ -240,7 +240,7 @@ async generateBillNo() {
 
   let { data, error } = await supabase
     .from('Cafe_Amazon_Promosion_House')
-    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email')
+    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
     .or(`Phone_No.eq.${cleanKey},Coupon_No.eq.${cleanKey}`)
     .maybeSingle();
 
@@ -248,7 +248,7 @@ async generateBillNo() {
   if (!data && !error && cleanFallbackPhone) {
     ({ data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email')
+      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
       .eq('Phone_No', cleanFallbackPhone)
       .maybeSingle());
   }
@@ -285,7 +285,8 @@ async generateBillNo() {
     productId: productIdStr,
     productName: productName,
     productImage: product?.image || null,
-    productPrice: Number(product?.price || 0)
+    productPrice: Number(product?.price || 0),
+    discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0)))
   };
   },
 
@@ -299,7 +300,7 @@ async generateBillNo() {
 
     const { data, error } = await getSupabase()
       .from('Cafe_Amazon_Promosion_House')
-      .select('Coupon_No, Confirm_Coupon')
+      .select('Coupon_No, Confirm_Coupon, Discount')
       .eq('Phone_No', cleanPhone)
       .maybeSingle();
 
@@ -307,7 +308,7 @@ async generateBillNo() {
     if (!data || data.Confirm_Coupon === true || data.Coupon_No !== cleanCouponNo) {
       throw new Error('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่');
     }
-    return true;
+    return { discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0))) };
   },
 
   /**
@@ -388,8 +389,9 @@ async getHistory(userPhone) {
           Cafe_Amazon_PK: pkValue,
           Product_Type: rawProductId.substring(0, 13),
           ItemDetail: userData.productName,
-          Price: Number(userData.productPrice || 0),
-          Discount: 0.00,
+           // ราคาเก็บเป็นราคาสินค้าจริง ไม่หักเปอร์เซ็นต์ส่วนลดของสมาชิก
+           Price: Number(userData.productPrice || 0),
+           Discount: Math.min(100, Math.max(0, Number(userData.discount ?? 0))),
           Change: 0.00,
           InsertDate: new Date().toISOString(),
           IsUse: true,
@@ -434,7 +436,7 @@ async getHistory(userPhone) {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, IsUse, Access_Level, Confirm_Coupon, Product_ID, Username, LoginType, Email')
+      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, IsUse, Access_Level, Confirm_Coupon, Product_ID, Username, LoginType, Email, LimitAll, LimitType, Discount')
       .order('Name', { ascending: true });
 
     if (error) throw new Error(`ดึงข้อมูลตารางล้มเหลว: ${error.message}`);
@@ -452,20 +454,25 @@ async getHistory(userPhone) {
       accessLevel: item.Access_Level ?? 0,
       username: item.Username || '',
       loginType: Number(item.LoginType ?? 0),
-      email: item.Email || ''
+      email: item.Email || '',
+      limitAll: Boolean(item.LimitAll),
+      limitType: Number(item.LimitType ?? 0),
+      discount: Number(item.Discount ?? 0)
     }));
   },
 
-  /** ดึงรายการขายของวันที่เลือกสำหรับรายงาน Staff */
-  async getSalesReport(dateValue) {
+  /** ดึงรายการขายตามช่วงวันที่สำหรับรายงาน Staff (รวมวันที่สิ้นสุดทั้งวัน) */
+  async getSalesReport(startDateValue, endDateValue = startDateValue) {
     const supabase = getSupabase();
-    const selectedDate = String(dateValue || '').trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedDate)) {
-      throw new Error('กรุณาเลือกวันที่ให้ถูกต้อง');
+    const selectedStartDate = String(startDateValue || '').trim();
+    const selectedEndDate = String(endDateValue || '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(selectedStartDate) || !/^\d{4}-\d{2}-\d{2}$/.test(selectedEndDate)) {
+      throw new Error('กรุณาเลือกช่วงวันที่ให้ถูกต้อง');
     }
 
-    const start = new Date(`${selectedDate}T00:00:00`);
-    const end = new Date(start);
+    const start = new Date(`${selectedStartDate}T00:00:00`);
+    const end = new Date(`${selectedEndDate}T00:00:00`);
+    if (start > end) throw new Error('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด');
     end.setDate(end.getDate() + 1);
     const { data, error } = await supabase
       .from('Cafe_Amazon_Bill')
@@ -518,6 +525,9 @@ async getHistory(userPhone) {
     const usernameValue = cleanString(payload.username);
     const emailValue = cleanString(payload.email);
     const loginTypeValue = [0, 1, 2].includes(Number(payload.loginType)) ? Number(payload.loginType) : 0;
+    const discountValue = Number(payload.discount ?? 0);
+    const limitAllValue = Boolean(payload.limitAll);
+    const limitTypeValue = [0, 1, 2].includes(Number(payload.limitType)) ? Number(payload.limitType) : 0;
 
     if (!cleanPhone || !cleanName) {
       throw new Error('กรุณากรอกชื่อ-นามสกุล และ เบอร์โทรศัพท์ ให้ครบถ้วน');
@@ -528,21 +538,23 @@ async getHistory(userPhone) {
     if (loginTypeValue === 2 && (!emailValue || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailValue))) {
       throw new Error('กรุณากรอก Email ให้ถูกต้องสำหรับเข้าสู่ระบบ');
     }
+    if (!Number.isFinite(discountValue) || discountValue < 0 || discountValue > 100) {
+      throw new Error('ส่วนลดต้องเป็นตัวเลขตั้งแต่ 0 ถึง 100 เปอร์เซ็นต์');
+    }
 
     const accessLevelValue = Number(payload.accessLevel) === 1 ? 1 : 0;
     if (accessLevelValue === 0) {
-      const rightsValues = [
-        Number(payload.quotaPerDay ?? payload.Day_Limit),
-        Number(payload.usedCount),
-        Number(payload.allLimit)
-      ];
-      const [dayLimit, usedCount, allLimit] = rightsValues;
+      const dayLimit = Number(payload.quotaPerDay ?? payload.Day_Limit);
+      const usedCount = Number(payload.usedCount);
+      const allLimit = Number(payload.allLimit);
       if (
         !Number.isInteger(dayLimit) || dayLimit <= 0 ||
         !Number.isInteger(usedCount) || usedCount < 0 ||
-        !Number.isInteger(allLimit) || allLimit <= 0
+        (!limitAllValue && (!Number.isInteger(allLimit) || allLimit <= 0))
       ) {
-        throw new Error('สิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0');
+        throw new Error(limitAllValue
+          ? 'สิทธิ์ตามช่วงเวลาต้องมากกว่า 0 และสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0'
+          : 'สิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0');
       }
     }
 
@@ -600,7 +612,10 @@ async getHistory(userPhone) {
       Access_Level: accessLevelValue,
       IsUse: payload.id ? Boolean(payload.isUse) : false,
       All_Use: accessLevelValue === 1 ? 0 : (payload.usedCount ?? 0),
-      All_Limit: accessLevelValue === 1 ? 0 : (payload.allLimit ?? 10),
+      All_Limit: accessLevelValue === 1 || limitAllValue ? 0 : (payload.allLimit ?? 10),
+      LimitAll: limitAllValue,
+      LimitType: limitTypeValue,
+      Discount: discountValue,
       UpdateDate: new Date().toISOString()
     };
 

@@ -353,12 +353,19 @@ body {
 
 .airprint-actions .secondary { background: #fff; }
 
+@page { size: 58mm auto; margin: 0; }
+
 @media print {
   body, #app, .staff-page { background: #fff !important; min-height: auto; }
   .staff-page-header, .airprint-actions { display: none !important; }
   .airprint-receipt { width: 58mm; margin: 0 auto; padding: 0; border: 0; border-radius: 0; box-shadow: none; font-size: 11px; }
   .airprint-receipt h1 { font-size: 15px; }
   .airprint-receipt .airprint-product { font-size: 13px; }
+  body:has(#sales-report-print-dialog) > *:not(#sales-report-print-dialog) { display: none !important; }
+  #sales-report-print-dialog { position: static !important; display: block !important; padding: 0 !important; background: #fff !important; }
+  #sales-report-print-dialog > section { width: 58mm !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  #sales-report-print-dialog h2, #sales-report-print-dialog > section > p, .sales-report-print-actions { display: none !important; }
+  #sales-report-print-paper { width: 58mm !important; max-width: none !important; margin: 0 !important; padding: 3mm !important; box-shadow: none !important; }
 }
 
 /* รองรับคีย์บอร์ดมือถือในฟอร์ม Staff */

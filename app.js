@@ -2033,11 +2033,17 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 <label style="font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
                 <div style="display:flex; align-items:stretch;">
                   <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
-                  <select id="h-field-limitType" aria-label="รอบการจำกัดสิทธิ์" style="width:auto; padding:0.6rem 0.4rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.9rem;">
-                    <option value="0" ${Number(record?.limitType ?? 0) === 0 ? 'selected' : ''}>วัน</option>
-                    <option value="1" ${Number(record?.limitType ?? 0) === 1 ? 'selected' : ''}>เดือน</option>
-                    <option value="2" ${Number(record?.limitType ?? 0) === 2 ? 'selected' : ''}>ปี</option>
-                  </select>
+                  <div id="h-limit-type-picker" style="position:relative; flex:0 0 auto;">
+                    <input type="hidden" id="h-field-limitType" value="${Number(record?.limitType ?? 0)}" />
+                    <button id="h-limit-type-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:78px; height:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:5px; padding:0.5rem 0.55rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.85rem; font-weight:600; white-space:nowrap;">
+                      <span id="h-limit-type-label">${Number(record?.limitType ?? 0) === 1 ? 'เดือน' : Number(record?.limitType ?? 0) === 2 ? 'ปี' : 'วัน'}</span><span aria-hidden="true" style="font-size:0.65rem;">▼</span>
+                    </button>
+                    <div id="h-limit-type-menu" role="listbox" aria-label="รอบการจำกัดสิทธิ์" hidden style="position:absolute; z-index:30; top:calc(100% + 4px); right:0; width:92px; padding:4px; border:1px solid #cbd5e1; border-radius:7px; background:#fff; box-shadow:0 8px 20px rgba(15,23,42,.18);">
+                      <button type="button" role="option" data-limit-type="0" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">วัน</button>
+                      <button type="button" role="option" data-limit-type="1" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">เดือน</button>
+                      <button type="button" role="option" data-limit-type="2" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">ปี</button>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div style="flex:1;">
@@ -2134,6 +2140,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const loginTypeFields = [...document.querySelectorAll('input[name="h-login-type"]')];
   const limitAllFields = [...document.querySelectorAll('input[name="h-limit-all"]')];
   const limitTypeField = document.querySelector('#h-field-limitType');
+  const limitTypeToggle = document.querySelector('#h-limit-type-toggle');
+  const limitTypeMenu = document.querySelector('#h-limit-type-menu');
+  const limitTypeLabel = document.querySelector('#h-limit-type-label');
   const usernameField = document.querySelector('#h-field-username');
   const emailField = document.querySelector('#h-field-email');
   const discountField = document.querySelector('#h-field-discount');
@@ -2141,6 +2150,29 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const getLoginType = () => Number(loginTypeFields.find(field => field.checked)?.value ?? 0);
   const getLimitAll = () => Number(limitAllFields.find(field => field.checked)?.value ?? 0) === 1;
   const getLimitType = () => Number(limitTypeField.value ?? 0);
+  const closeLimitTypeMenu = () => {
+    limitTypeMenu.hidden = true;
+    limitTypeToggle.setAttribute('aria-expanded', 'false');
+  };
+  limitTypeToggle.addEventListener('click', () => {
+    const willOpen = limitTypeMenu.hidden;
+    limitTypeMenu.hidden = !willOpen;
+    limitTypeToggle.setAttribute('aria-expanded', String(willOpen));
+  });
+  limitTypeMenu.querySelectorAll('[data-limit-type]').forEach(option => {
+    option.addEventListener('click', () => {
+      limitTypeField.value = option.dataset.limitType;
+      limitTypeLabel.textContent = option.textContent.trim();
+      closeLimitTypeMenu();
+      limitTypeToggle.focus();
+    });
+  });
+  houseForm.addEventListener('click', event => {
+    if (!event.target.closest('#h-limit-type-picker')) closeLimitTypeMenu();
+  });
+  limitTypeToggle.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeLimitTypeMenu();
+  });
   const updateLoginFieldsRequirement = () => {
     const loginType = getLoginType();
     usernameField.required = loginType === 1;

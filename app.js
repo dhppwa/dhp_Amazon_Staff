@@ -1436,11 +1436,11 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
     bills.forEach(bill => {
       const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
       lines.push({ text: saleDate, fontSize: 17 });
+      lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
       lines.push({ text: bill.productName || '-', bold: true });
       lines.push({ leftText: 'ราคา', rightText: `฿${money(bill.productPrice)}` });
       lines.push({ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(bill.discount)}%` });
       lines.push({ leftText: 'ราคาสุทธิ', rightText: `฿${money(getSalesBillNetPrice(bill))}`, bold: true });
-      lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
       lines.push({ text: '--------------------------------' });
     });
   }

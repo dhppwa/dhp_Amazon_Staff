@@ -1363,6 +1363,7 @@ function showReportDatePicker(initialValue) {
 function showSalesReportDetail(bill) {
   document.querySelector('#sales-report-detail-dialog')?.remove();
   const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
+  const netPrice = getSalesBillNetPrice(bill);
   document.body.insertAdjacentHTML('beforeend', `
     <div id="sales-report-detail-dialog" style="position:fixed; inset:0; z-index:50001; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.6);">
       <section role="dialog" aria-modal="true" aria-labelledby="sales-report-detail-title" style="width:min(100%,430px); max-height:calc(100dvh - 40px); overflow:auto; padding:22px; border-radius:18px; background:#fff; color:#1e293b; box-shadow:0 22px 50px rgba(0,0,0,.3);">
@@ -1376,6 +1377,8 @@ function showSalesReportDetail(bill) {
           <div><strong>หมายเหตุ:</strong> ${esc(bill.memberRemark || '-')}</div>
           <div><strong>สินค้า:</strong> ${esc(bill.productName || '-')}</div>
           <div><strong>ราคา:</strong> ฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+          <div><strong>ส่วนลด:</strong> ${formatDiscountPercent(bill.discount)}%</div>
+          <div><strong>ราคาสุทธิ:</strong> ฿${netPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div><strong>ใช้สิทธิ์แล้ว:</strong> ${Number(bill.memberUsedCount || 0)} / ${Number(bill.memberAllLimit || 0)} ครั้ง</div>
           <div><strong>จำนวนสิทธิ์ต่อวัน:</strong> ${Number(bill.memberDayLimit || 1)} ครั้ง</div>
         </div>
@@ -1385,6 +1388,14 @@ function showSalesReportDetail(bill) {
       </section>
     </div>`);
   document.querySelector('#btn-close-sales-report-detail').onclick = () => document.querySelector('#sales-report-detail-dialog')?.remove();
+}
+
+function getSalesBillNetPrice(bill) {
+  const savedNetPrice = Number(bill?.netPrice);
+  if (Number.isFinite(savedNetPrice)) return Math.max(0, savedNetPrice);
+  const price = Math.max(0, Number(bill?.productPrice ?? bill?.Price ?? 0));
+  const discount = Math.min(100, Math.max(0, Number(bill?.discount ?? bill?.Discount ?? 0)));
+  return price * (1 - discount / 100);
 }
 
 function summarizeSalesReportBills(bills) {
@@ -1399,7 +1410,7 @@ function summarizeSalesReportBills(bills) {
       total: 0
     };
     current.quantity += 1;
-    current.total += Number(bill.productPrice || 0);
+    current.total += getSalesBillNetPrice(bill);
     summaryMap.set(key, current);
   });
   return [...summaryMap.values()].sort((a, b) => b.quantity - a.quantity || a.productName.localeCompare(b.productName, 'th'));
@@ -1407,7 +1418,7 @@ function summarizeSalesReportBills(bills) {
 
 function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   const money = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const total = bills.reduce((sum, bill) => sum + Number(bill.productPrice || 0), 0);
+  const total = bills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
   const lines = [
     { text: 'D House x Café Amazon', align: 'center', bold: true },
     { text: 'รายงานการขาย', align: 'center', bold: true },
@@ -1419,20 +1430,23 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   if (mode === 'summary') {
     summarizeSalesReportBills(bills).forEach(item => {
       lines.push({ text: item.productName, bold: true });
-      lines.push({ leftText: `จำนวน ${item.quantity} รายการ`, rightText: `฿${money(item.total)}` });
+      lines.push({ leftText: `จำนวน ${item.quantity} แก้ว`, rightText: `฿${money(item.total)}` });
     });
   } else {
     bills.forEach(bill => {
       const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
-      lines.push({ leftText: saleDate, rightText: `฿${money(bill.productPrice)}`, fontSize: 17 });
+      lines.push({ text: saleDate, fontSize: 17 });
       lines.push({ text: bill.productName || '-', bold: true });
+      lines.push({ leftText: 'ราคา', rightText: `฿${money(bill.productPrice)}` });
+      lines.push({ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(bill.discount)}%` });
+      lines.push({ leftText: 'ราคาสุทธิ', rightText: `฿${money(getSalesBillNetPrice(bill))}`, bold: true });
       lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
       lines.push({ text: '--------------------------------' });
     });
   }
 
   lines.push({ text: '--------------------------------' });
-  lines.push({ leftText: `รวม ${bills.length} รายการ`, rightText: `฿${money(total)}`, bold: true });
+  lines.push({ leftText: `รวมจำนวน ${bills.length} แก้ว`, rightText: `฿${money(total)}`, bold: true });
   return lines;
 }
 
@@ -1447,14 +1461,18 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   }).join('');
 
   document.body.insertAdjacentHTML('beforeend', `
-    <div id="sales-report-print-dialog" style="position:fixed; inset:0; z-index:50002; overflow:auto; padding:20px; background:rgba(15,23,42,.68);">
-      <section style="width:min(100%,420px); margin:0 auto; padding:18px; border-radius:16px; background:#f8fafc; box-shadow:0 22px 50px rgba(0,0,0,.3);">
-        <h2 style="margin:0 0 12px; color:#0284c7; font-size:1.15rem;">ตัวอย่างก่อนพิมพ์</h2>
-        <div id="sales-report-print-paper" style="width:58mm; max-width:100%; min-height:120px; margin:0 auto; padding:5mm 3mm; box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.45; box-shadow:0 3px 14px rgba(0,0,0,.14);">${previewRows}</div>
-        <div class="sales-report-print-actions" style="display:flex; justify-content:flex-end; gap:8px; margin-top:16px;">
-          <button id="btn-close-sales-report-print" type="button" style="padding:10px 14px; border:0; border-radius:8px; background:#e2e8f0; color:#334155; font-weight:700;">ปิด</button>
-          <button id="btn-confirm-sales-report-print" type="button" style="padding:10px 14px; border:0; border-radius:8px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
-        </div>
+    <div id="sales-report-print-dialog" class="staff-page" style="position:fixed; inset:0; z-index:50002; overflow:hidden; background:#6f8f7e; color:#1e293b;">
+      <section style="width:100%; min-height:100%; height:100%; display:flex; flex-direction:column; background:#6f8f7e;">
+        <header class="staff-page-header" style="flex:0 0 auto; background:#fff; border-bottom:1px solid #cbd5e1;">
+          <button class="back" id="btn-close-sales-report-print" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <h3 style="color:#0284c7;">ตัวอย่างก่อนพิมพ์รายงาน</h3>
+        </header>
+        <main style="flex:1; min-height:0; overflow:auto; padding:24px 16px 110px; box-sizing:border-box;">
+          <div id="sales-report-print-paper" style="width:58mm; max-width:100%; min-height:120px; margin:0 auto; padding:5mm 3mm; box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.45; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
+        </main>
+        <footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
+          <button id="btn-confirm-sales-report-print" type="button" style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
+        </footer>
       </section>
     </div>`);
 
@@ -1534,8 +1552,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
   const renderReport = () => {
     const content = document.querySelector('#sales-report-content');
     const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'detail';
-    const total = reportBills.reduce((sum, bill) => sum + Number(bill.productPrice || 0), 0);
-    const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;"><span>${reportBills.length} รายการ</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
+    const total = reportBills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
+    const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;"><span>จำนวน ${reportBills.length.toLocaleString('th-TH')} แก้ว</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
 
     if (reportMode === 'summary') {
       const rows = summarizeSalesReportBills(reportBills);
@@ -1544,7 +1562,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
           ${renderProductImage(item.productId, item.productName, item.productImage, 64)}
           <div style="min-width:0; flex:1;">
             <div style="font-weight:700; color:#1e293b;">${esc(item.productName)}</div>
-            <div style="display:flex; justify-content:space-between; gap:12px; margin-top:7px; color:#475569;"><span>จำนวน ${item.quantity.toLocaleString('th-TH')} รายการ</span><strong style="color:#059669;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+            <div style="display:flex; justify-content:space-between; gap:12px; margin-top:7px; color:#475569;"><span>จำนวน ${item.quantity.toLocaleString('th-TH')} แก้ว</span><strong style="color:#059669;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -1554,8 +1572,11 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
         ${renderProductImage(bill.Product_Type || bill.productId, bill.productName, bill.productImage, 64)}
         <div style="min-width:0; flex:1;">
-          <div style="display:flex; justify-content:space-between; gap:12px; font-weight:700;"><span>${esc(bill.Bill_No || '-')}</span><span>฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <div style="font-weight:700;">${esc(bill.Bill_No || '-')}</div>
           <div style="margin-top:5px; color:#334155;">${esc(bill.productName || '-')}</div>
+          <div style="margin-top:4px; color:#64748b; font-size:.86rem; display:flex; justify-content:space-between; gap:12px;"><span>ราคา</span><span>฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+          <div style="margin-top:3px; color:#64748b; font-size:.86rem; display:flex; justify-content:space-between; gap:12px;"><span>ส่วนลด</span><span>${formatDiscountPercent(bill.discount)}%</span></div>
+          <div style="margin-top:3px; color:#059669; font-size:.9rem; font-weight:700; display:flex; justify-content:space-between; gap:12px;"><span>ราคาสุทธิ</span><span>฿${getSalesBillNetPrice(bill).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
           <div style="margin-top:5px; color:#475569; font-size:.88rem;">${esc(bill.memberName || '-')} · ${esc(maskPhoneNumber(bill.memberPhone))}</div>
           <div style="margin-top:4px; color:#64748b; font-size:.86rem;">${bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-'}</div>
           <button type="button" data-sales-detail-index="${index}" style="margin-top:8px; padding:7px 10px; border:1px solid #bae6fd; border-radius:8px; background:#f0f9ff; color:#0369a1; font-weight:700;">แสดงข้อมูลเพิ่มเติม</button>
@@ -1690,7 +1711,7 @@ function renderClientDetailPage(data) {
             <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
             <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
           </div>
-          ${renderReceiptPreviewCards(data)}
+          ${/* ซ่อนพรีวิวใบเสร็จหลังสแกน QR แต่ยังคงฟังก์ชันพิมพ์จริงไว้ */ ''}
           
           <div style="margin-top:1.25rem; display:flex; flex-direction:column; gap:0.6rem;">
             ${
@@ -1867,15 +1888,15 @@ async function openHouseManagementModal() {
         <div style="border:1px solid #cbd5e1; border-radius:12px; background:#fff; overflow:hidden; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
           
           <div style="padding:0.85rem 1rem; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; gap:0.5rem; flex-wrap:wrap; justify-content:space-between; align-items:center;">
-            <div style="display:flex; gap:0.5rem; flex:1; min-width:240px;">
-              <input type="text" id="house-search-input" style="flex:1; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9rem;" />
-              <button id="btn-house-search" style="padding:0.6rem 1rem; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🔍 ค้นหา</button>
+            <div style="display:flex; gap:0.5rem; flex:1 1 300px; min-width:0; flex-wrap:wrap; align-items:center;">
+              <input type="text" id="house-search-input" style="flex:1 1 180px; min-width:140px; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; font-size:0.9rem; box-sizing:border-box;" />
+              <button type="button" id="btn-house-search" style="width:100px; min-width:100px; max-width:100px; min-height:42px; flex:0 0 100px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.6rem; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; white-space:nowrap;">🔍 ค้นหา</button>
             </div>
-            <div style="display:flex; gap:0.5rem;">
-              <button id="btn-house-refresh" style="padding:0.6rem 1rem; background:#475569; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🔄 รีเฟรช</button>
-              <button id="btn-printer-settings" style="padding:0.6rem 1rem; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🖨️ ตั้งค่าเครื่องพิมพ์</button>
-              <button id="btn-print-receipt-settings" style="padding:0.6rem 1rem; background:#7c3aed; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">🧾 ตั้งค่าการพิมพ์</button>
-              <button id="btn-open-add-house" style="padding:0.6rem 1rem; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem;">➕ เพิ่มข้อมูลใหม่</button>
+            <div style="display:flex; gap:0.5rem; flex:0 1 auto; flex-wrap:wrap; justify-content:flex-end; align-items:center; min-width:0;">
+              <button type="button" id="btn-house-refresh" style="width:150px; min-width:150px; max-width:150px; min-height:42px; flex:0 0 150px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.6rem; background:#475569; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; white-space:nowrap;">🔄 รีเฟรช</button>
+              <button type="button" id="btn-printer-settings" style="width:150px; min-width:150px; max-width:150px; min-height:42px; flex:0 0 150px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.6rem; background:#0284c7; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; white-space:nowrap;">🖨️ ตั้งค่าเครื่องพิมพ์</button>
+              <button type="button" id="btn-print-receipt-settings" style="width:150px; min-width:150px; max-width:150px; min-height:42px; flex:0 0 150px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.6rem; background:#7c3aed; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; white-space:nowrap;">🧾 ตั้งค่าการพิมพ์</button>
+              <button type="button" id="btn-open-add-house" style="width:150px; min-width:150px; max-width:150px; min-height:42px; flex:0 0 150px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.6rem; background:#059669; color:#fff; border:none; border-radius:6px; font-weight:bold; cursor:pointer; font-size:0.9rem; white-space:nowrap;">➕ เพิ่มข้อมูลใหม่</button>
             </div>
           </div>
 
@@ -2342,10 +2363,10 @@ function renderHouseTable(list) {
       <td style="padding:0.75rem; text-align:center;">${item.usedCount ?? 0}</td>
       <td style="padding:0.75rem; text-align:center;">${item.allLimit ?? 10}</td>
       <td style="padding:0.75rem; text-align:center;">
-        <div style="display:flex; gap:0.4rem; justify-content:center;">
-          <button type="button" data-history-id="${esc(item.id)}" style="padding:0.4rem 0.6rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap;">📜 ประวัติ</button>
-          <button onclick="editHouseRecord('${esc(item.id)}')" style="padding:0.4rem 0.6rem; background:#eab308; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold;">✏️ แก้ไข</button>
-          <button onclick="deleteHouseRecord('${esc(item.id)}', '${esc(item.name)}')" style="padding:0.4rem 0.6rem; background:#dc2626; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold;">🗑️ ลบ</button>
+        <div style="display:flex; gap:0.4rem; justify-content:center; align-items:center; flex-wrap:wrap;">
+          <button type="button" data-history-id="${esc(item.id)}" style="width:90px; min-width:90px; max-width:90px; height:36px; flex:0 0 90px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.4rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap;">📜 ประวัติ</button>
+          <button type="button" onclick="editHouseRecord('${esc(item.id)}')" style="width:90px; min-width:90px; max-width:90px; height:36px; flex:0 0 90px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.4rem; background:#eab308; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap;">✏️ แก้ไข</button>
+          <button type="button" onclick="deleteHouseRecord('${esc(item.id)}', '${esc(item.name)}')" style="width:90px; min-width:90px; max-width:90px; height:36px; flex:0 0 90px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.4rem; background:#dc2626; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap;">🗑️ ลบ</button>
         </div>
       </td>
     </tr>

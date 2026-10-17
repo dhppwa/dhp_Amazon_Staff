@@ -364,6 +364,7 @@ body {
   body:has(#sales-report-print-dialog) > *:not(#sales-report-print-dialog) { display: none !important; }
   #sales-report-print-dialog { position: static !important; display: block !important; padding: 0 !important; background: #fff !important; }
   #sales-report-print-dialog > section { width: 58mm !important; margin: 0 !important; padding: 0 !important; border-radius: 0 !important; box-shadow: none !important; }
+  #sales-report-print-dialog main { padding: 0 !important; overflow: visible !important; }
   #sales-report-print-dialog h2, #sales-report-print-dialog > section > p, .sales-report-print-actions { display: none !important; }
   #sales-report-print-paper { width: 58mm !important; max-width: none !important; margin: 0 !important; padding: 3mm !important; box-shadow: none !important; }
 }

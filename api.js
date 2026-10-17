@@ -539,12 +539,16 @@ async getHistory(userPhone) {
       const productId = normalizeProductId(bill.Product_Type);
       const product = PRODUCT_MAP[productId];
       const member = memberMap.get(String(bill.Cafe_Amazon_PK)) || {};
+      const productPrice = Number(bill.Price ?? product?.price ?? 0);
+      const discount = Math.min(100, Math.max(0, Number(bill.Discount ?? 0)));
       return {
         ...bill,
         productId,
         productName: getVisibleProductName(bill.ItemDetail, product),
         productImage: product?.image || null,
-        productPrice: Number(product?.price ?? bill.Price ?? 0),
+        productPrice,
+        discount,
+        netPrice: productPrice * (1 - discount / 100),
         memberName: member.Name || '-',
         memberPhone: member.Phone_No || '-',
         memberAddress: member.Detail || '-',

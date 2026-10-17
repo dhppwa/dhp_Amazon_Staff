@@ -696,6 +696,35 @@ function formatDiscountPercent(value) {
     : '0';
 }
 
+function formatReceiptPrice(value) {
+  const price = Number(value ?? 0);
+  return Number.isFinite(price)
+    ? price.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
+    : '0';
+}
+
+function getReceiptUsageSummary(data) {
+  const periodLabels = ['วัน', 'เดือน', 'ปี'];
+  const periodLabel = periodLabels[Number(data.limitType ?? 0)] || 'วัน';
+  const usedAfter = Number(data.usedCount ?? 0) + 1;
+  const periodUsedAfter = Number(data.periodUsed ?? 0) + 1;
+  const periodLimit = Number(data.quotaPerPeriod ?? 0);
+  const periodRemaining = periodLimit > 0 ? Math.max(0, periodLimit - periodUsedAfter) : null;
+  const totalRemaining = data.limitAll
+    ? null
+    : Math.max(0, Number(data.allLimit ?? 0) - usedAfter);
+  const actualRemaining = periodRemaining == null
+    ? totalRemaining
+    : totalRemaining == null
+      ? periodRemaining
+      : Math.min(periodRemaining, totalRemaining);
+
+  return {
+    usedAfter,
+    remainingText: actualRemaining == null ? 'ไม่กำหนด' : `${actualRemaining} สิทธิ์/${periodLabel}`
+  };
+}
+
 function createReceiptLines(data, billNo) {
   const now = new Date().toLocaleString('th-TH', {
     day: '2-digit',
@@ -706,6 +735,7 @@ function createReceiptLines(data, billNo) {
   });
   const displayName = formatCustomerName(data.name);
   const detailText = `${data.address || '-'}${data.project && data.project !== '-' ? ` ${data.project}` : ''}`;
+  const usage = getReceiptUsageSummary(data);
 
   const buildBlock = (isMerchantCopy = false) => [
     {
@@ -727,11 +757,15 @@ function createReceiptLines(data, billNo) {
       rightText: `${maskPhoneNumber(data.phone)}`
     },
     { text: '1 สิทธิ์ (ใช้สิทธิ์ฟรี)' },
-    { text: `${data.productName}`, bold: true },
+    {
+      leftText: `${data.productName} 1 แก้ว`,
+      rightText: isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE',
+      bold: true
+    },
     ...(isMerchantCopy ? [{ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
     {
-      leftText: `ใช้ไปแล้ว: ${data.usedCount + 1} สิทธิ์`,
-      rightText: `คงเหลือ: ${data.allLimit - (data.usedCount + 1)} สิทธิ์`
+      leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
+      rightText: `คงเหลือ: ${usage.remainingText}`
     },
     { text: 'ขอบคุณที่ใช้บริการ', align: 'center' }
   ];
@@ -1180,7 +1214,7 @@ function supportsBluetoothPrinting() {
 
 function renderAirPrintReceipt(data, billNo) {
   const printedAt = new Date().toLocaleString('th-TH');
-  const remainingBenefits = Math.max(0, data.allLimit - (data.usedCount + 1));
+  const usage = getReceiptUsageSummary(data);
   const isMerchantOnly = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY;
   app.innerHTML = `
     <div class="staff-page airprint-page">
@@ -1198,10 +1232,10 @@ function renderAirPrintReceipt(data, billNo) {
         <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
         <hr>
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
-        <p class="airprint-product">${esc(data.productName)}</p>
+        <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span>${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
         ${isMerchantOnly ? `<p class="airprint-row"><span>ส่วนลด</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
-        <p>ใช้ไปแล้ว: ${data.usedCount + 1} สิทธิ์</p>
-        <p>คงเหลือ: ${remainingBenefits} สิทธิ์</p>
+        <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
+        <p>คงเหลือ: ${esc(usage.remainingText)}</p>
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
         <hr>
         <p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>
@@ -1644,7 +1678,7 @@ function renderClientDetailPage(data) {
           </div>
 
           <p style="margin:0.75rem 0 0.25rem 0; font-size:0.95rem; color:#334155;">
-            <strong>สิทธิ์ที่ใช้ไป:</strong> <span style="color:#d97706; font-weight:bold;">${data.usedCount}</span> / ${data.allLimit} ครั้ง
+            <strong>สิทธิ์ที่ใช้ไป:</strong> <span style="color:#d97706; font-weight:bold;">${data.usedCount}</span> / ${data.limitAll ? 'ไม่กำหนด' : data.allLimit} ครั้ง
           </p>
           ${renderReceiptPreviewCards(data)}
           
@@ -1703,6 +1737,12 @@ function renderClientDetailPage(data) {
         // ต้องผ่านการตรวจ Coupon_No ล่าสุดจากฐานข้อมูลก่อน จึงค่อยเชื่อมต่อเครื่องพิมพ์
         const latestCoupon = await window.staffApi.validateCouponForRedeem(data.phone, data.couponNo);
         data.discount = Number(latestCoupon?.discount ?? data.discount ?? 0);
+        data.usedCount = Number(latestCoupon?.usedCount ?? data.usedCount ?? 0);
+        data.allLimit = Number(latestCoupon?.allLimit ?? data.allLimit ?? 0);
+        data.quotaPerPeriod = Number(latestCoupon?.quotaPerPeriod ?? data.quotaPerPeriod ?? 0);
+        data.limitAll = Boolean(latestCoupon?.limitAll ?? data.limitAll);
+        data.limitType = Number(latestCoupon?.limitType ?? data.limitType ?? 0);
+        data.periodUsed = Number(latestCoupon?.periodUsed ?? data.periodUsed ?? 0);
 
         updatePrintLoadingMessage('กำลังสร้างเลขบิล...');
         const generatedBillNo = await window.staffApi.generateBillNo();

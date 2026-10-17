@@ -54,6 +54,35 @@ function cleanString(val) {
   return String(val || '').trim();
 }
 
+function getLimitPeriodRange(limitType, now = new Date()) {
+  const type = [0, 1, 2].includes(Number(limitType)) ? Number(limitType) : 0;
+  if (type === 1) return {
+    start: new Date(now.getFullYear(), now.getMonth(), 1),
+    end: new Date(now.getFullYear(), now.getMonth() + 1, 1)
+  };
+  if (type === 2) return {
+    start: new Date(now.getFullYear(), 0, 1),
+    end: new Date(now.getFullYear() + 1, 0, 1)
+  };
+  return {
+    start: new Date(now.getFullYear(), now.getMonth(), now.getDate()),
+    end: new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1)
+  };
+}
+
+async function getPeriodUsageCount(memberId, limitType) {
+  if (!memberId) return 0;
+  const range = getLimitPeriodRange(limitType);
+  const { data, error } = await getSupabase()
+    .from('Cafe_Amazon_Bill')
+    .select('ID')
+    .eq('Cafe_Amazon_PK', memberId)
+    .gte('InsertDate', range.start.toISOString())
+    .lt('InsertDate', range.end.toISOString());
+  if (error) throw new Error(`ตรวจสอบสิทธิ์ตามช่วงเวลาไม่สำเร็จ: ${error.message}`);
+  return (data || []).length;
+}
+
 const STAFF_PENDING_USAGE_RELEASE_KEY = 'staff-pending-isuse-release';
 function queueStaffUsageRelease(phone) {
   if (phone) localStorage.setItem(STAFF_PENDING_USAGE_RELEASE_KEY, cleanString(phone));
@@ -240,7 +269,7 @@ async generateBillNo() {
 
   let { data, error } = await supabase
     .from('Cafe_Amazon_Promosion_House')
-    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
+    .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, LimitAll, LimitType, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
     .or(`Phone_No.eq.${cleanKey},Coupon_No.eq.${cleanKey}`)
     .maybeSingle();
 
@@ -248,7 +277,7 @@ async generateBillNo() {
   if (!data && !error && cleanFallbackPhone) {
     ({ data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
+      .select('ID, Name, Phone_No, Detail, Remark, All_Use, All_Limit, Day_Limit, LimitAll, LimitType, Confirm_Coupon, LastUse_Date, Coupon_No, Product_ID, Username, LoginType, Email, Discount')
       .eq('Phone_No', cleanFallbackPhone)
       .maybeSingle());
   }
@@ -267,6 +296,7 @@ async generateBillNo() {
   const productIdStr = data.Product_ID != null ? normalizeProductId(data.Product_ID) : null;
   const product = productIdStr ? PRODUCT_MAP[productIdStr] : null;
   const productName = product?.name || (productIdStr ? 'รายการสินค้า' : 'ไม่ได้เลือกสินค้า');
+  const periodUsed = await getPeriodUsageCount(data.ID, data.LimitType);
 
   return {
     id: data.ID,
@@ -278,7 +308,11 @@ async generateBillNo() {
     address: data.Detail || '-',
     project: data.Remark || '-',
     usedCount: data.All_Use ?? 0,
-    allLimit: data.All_Limit ?? 50,
+    allLimit: Number(data.All_Limit ?? 0),
+    quotaPerPeriod: Number(data.Day_Limit ?? 0),
+    limitAll: Boolean(data.LimitAll),
+    limitType: Number(data.LimitType ?? 0),
+    periodUsed,
     confirmCoupon: data.Confirm_Coupon ?? false,
     lastUseDate: data.LastUse_Date,
     couponNo: data.Coupon_No || 'ไม่มีคูปองที่ใช้งานอยู่',
@@ -300,7 +334,7 @@ async generateBillNo() {
 
     const { data, error } = await getSupabase()
       .from('Cafe_Amazon_Promosion_House')
-      .select('Coupon_No, Confirm_Coupon, Discount')
+      .select('ID, Coupon_No, Confirm_Coupon, Discount, All_Use, All_Limit, Day_Limit, LimitAll, LimitType')
       .eq('Phone_No', cleanPhone)
       .maybeSingle();
 
@@ -308,7 +342,15 @@ async generateBillNo() {
     if (!data || data.Confirm_Coupon === true || data.Coupon_No !== cleanCouponNo) {
       throw new Error('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่');
     }
-    return { discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0))) };
+    return {
+      discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0))),
+      usedCount: Number(data.All_Use ?? 0),
+      allLimit: Number(data.All_Limit ?? 0),
+      quotaPerPeriod: Number(data.Day_Limit ?? 0),
+      limitAll: Boolean(data.LimitAll),
+      limitType: Number(data.LimitType ?? 0),
+      periodUsed: await getPeriodUsageCount(data.ID, data.LimitType)
+    };
   },
 
   /**

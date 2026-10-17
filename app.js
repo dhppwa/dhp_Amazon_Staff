@@ -703,6 +703,12 @@ function formatReceiptPrice(value) {
     : '0';
 }
 
+function getNetReceiptPrice(data) {
+  const price = Math.max(0, Number(data?.productPrice ?? 0));
+  const discount = Math.min(100, Math.max(0, Number(data?.discount ?? 0)));
+  return price * (1 - discount / 100);
+}
+
 function getReceiptUsageSummary(data) {
   const periodLabels = ['วัน', 'เดือน', 'ปี'];
   const periodLabel = periodLabels[Number(data.limitType ?? 0)] || 'วัน';
@@ -763,6 +769,7 @@ function createReceiptLines(data, billNo) {
       bold: true
     },
     ...(isMerchantCopy ? [{ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
+    ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
     {
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
       rightText: `คงเหลือ: ${usage.remainingText}`
@@ -1234,6 +1241,7 @@ function renderAirPrintReceipt(data, billNo) {
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
         <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span>${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
         ${isMerchantOnly ? `<p class="airprint-row"><span>ส่วนลด</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
+        ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
         <p>คงเหลือ: ${esc(usage.remainingText)}</p>
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
@@ -1640,6 +1648,7 @@ async function processPhoneQuery(phone, scannedProductId = null, expiresAt = nul
 // ===== หน้าแสดงรายละเอียดสมาชิก (ขยายแสดงผลแบบ Full Screen) =====
 function renderClientDetailPage(data) {
   const displayName = formatCustomerName(data.name);
+  const usage = getReceiptUsageSummary(data);
 
   const hasCouponOrProduct = Boolean(
     data.productId && 
@@ -1677,9 +1686,10 @@ function renderClientDetailPage(data) {
             ${renderProductImage(data.productId, data.productName, imgUrl, 200)}
           </div>
 
-          <p style="margin:0.75rem 0 0.25rem 0; font-size:0.95rem; color:#334155;">
-            <strong>สิทธิ์ที่ใช้ไป:</strong> <span style="color:#d97706; font-weight:bold;">${data.usedCount}</span> / ${data.limitAll ? 'ไม่กำหนด' : data.allLimit} ครั้ง
-          </p>
+          <div style="display:flex; justify-content:space-between; gap:0.75rem; margin:0.75rem 0 0.25rem; padding:0.65rem 0.75rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.92rem;">
+            <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
+            <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
+          </div>
           ${renderReceiptPreviewCards(data)}
           
           <div style="margin-top:1.25rem; display:flex; flex-direction:column; gap:0.6rem;">

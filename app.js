@@ -630,50 +630,31 @@ function openPrinterSettings() {
   };
 }
 
-function makeWriter(ch) {
-  if (ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse) return d => ch.writeValueWithoutResponse(d);
-  if (ch.properties.write && ch.writeValueWithResponse) return d => ch.writeValueWithResponse(d);
-  return d => ch.writeValue(d);
-}
-
-// จดจำขนาดก้อนที่เครื่องพิมพ์รับได้ เพื่อให้ใบถัดไปเริ่มที่ความเร็วสูงสุดทันที
-let printerWriteChunkSize = 60;
+let printerWriteWithoutResponseDelayMs = 10;
 
 async function sendBytes(ch, bytes) {
-  const write = makeWriter(ch);
-  const chunkSteps = [20, 40, 60, 100, 160, 240, 360, 480];
-  let size = printerWriteChunkSize;
-  let i = 0;
-  let successfulWrites = 0;
+  const canWriteWithResponse = Boolean(ch.properties.write && ch.writeValueWithResponse);
+  const canWriteWithoutResponse = Boolean(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse);
+  const write = canWriteWithResponse
+    ? data => ch.writeValueWithResponse(data)
+    : canWriteWithoutResponse
+      ? data => ch.writeValueWithoutResponse(data)
+      : data => ch.writeValue(data);
 
-  while (i < bytes.length) {
+  // เครื่องพิมพ์รุ่นนี้รับข้อมูลภาพผ่าน BLE ได้อย่างเสถียรที่ก้อนละ 20 ไบต์
+  // แบบมี response ใช้ ACK ของเครื่องควบคุมจังหวะ จึงไม่ต้องหน่วงเวลาเพิ่ม
+  // แบบไม่มี response ใช้ delay สั้น และกลับโหมดปลอดภัยเมื่อ Bluetooth แจ้งข้อผิดพลาด
+  for (let i = 0; i < bytes.length; i += 20) {
     try {
-      await write(bytes.slice(i, i + size));
-      i += size;
-      successfulWrites += 1;
-
-      // ค่อย ๆ เร่งจนถึงขนาดสูงสุดที่ Bluetooth/เครื่องพิมพ์เครื่องนี้รับได้
-      if (successfulWrites >= 6) {
-        const nextSize = chunkSteps.find(step => step > size);
-        if (nextSize) size = nextSize;
-        successfulWrites = 0;
+      await write(bytes.slice(i, i + 20));
+      if (canWriteWithResponse) {
+        if (i > 0 && i % 320 === 0) await sleep(0);
+      } else {
+        await sleep(printerWriteWithoutResponseDelayMs);
       }
-
-      printerWriteChunkSize = size;
-
-      // writeValueWithResponse มีการควบคุมจังหวะจากอุปกรณ์อยู่แล้ว ส่วนแบบไม่รอ
-      // response ให้คืน event loop เป็นระยะโดยไม่ใส่ delay คงที่ทุกก้อน
-      if (successfulWrites === 0) await sleep(0);
-    } catch (err) {
-      const smallerSteps = chunkSteps.filter(step => step < size);
-      if (smallerSteps.length) {
-        size = smallerSteps[smallerSteps.length - 1];
-        printerWriteChunkSize = size;
-        successfulWrites = 0;
-        await sleep(15);
-        continue;
-      }
-      throw err;
+    } catch (error) {
+      if (!canWriteWithResponse) printerWriteWithoutResponseDelayMs = 20;
+      throw error;
     }
   }
 }

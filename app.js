@@ -631,8 +631,8 @@ function openPrinterSettings() {
 }
 
 const PRINTER_WRITE_CHUNK_SIZE = 20;
-const PRINTER_WRITE_BURST_CHUNKS = 20;
-let printerWriteWithoutResponseDelayMs = 2;
+const PRINTER_WRITE_BURST_CHUNKS = 60;
+let printerWriteWithoutResponseDelayMs = 0;
 
 async function sendBytes(ch, bytes) {
   const canWriteWithResponse = Boolean(ch.properties.write && ch.writeValueWithResponse);
@@ -645,11 +645,12 @@ async function sendBytes(ch, bytes) {
       : data => ch.writeValue(data);
 
   // เครื่องพิมพ์รุ่นนี้รับข้อมูลภาพผ่าน BLE ได้อย่างเสถียรที่ก้อนละ 20 ไบต์
-  // ส่งเป็นชุด 20 ก้อนก่อนพักสั้น ๆ: เร็วกว่าหน่วงทุกก้อน แต่ไม่เพิ่มขนาด packet จนภาพเสีย
+  // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง: เรายังคงจำกัด packet ละ 20 ไบต์เพื่อไม่ให้ภาพภาษาไทยเพี้ยน
   for (let i = 0, chunkIndex = 0; i < bytes.length; i += PRINTER_WRITE_CHUNK_SIZE, chunkIndex += 1) {
     try {
       await write(bytes.slice(i, i + PRINTER_WRITE_CHUNK_SIZE));
       if (canWriteWithoutResponse && (chunkIndex + 1) % PRINTER_WRITE_BURST_CHUNKS === 0) {
+        // คืน event loop เป็นระยะโดยไม่หน่วงเวลา เพื่อให้ Bluetooth flush queue ตามจังหวะของระบบ
         await sleep(printerWriteWithoutResponseDelayMs);
       } else if (i > 0 && i % 320 === 0) {
         await sleep(0);

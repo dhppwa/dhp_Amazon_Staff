@@ -630,30 +630,32 @@ function openPrinterSettings() {
   };
 }
 
-let printerWriteWithoutResponseDelayMs = 10;
+const PRINTER_WRITE_CHUNK_SIZE = 20;
+const PRINTER_WRITE_BURST_CHUNKS = 10;
+let printerWriteWithoutResponseDelayMs = 4;
 
 async function sendBytes(ch, bytes) {
   const canWriteWithResponse = Boolean(ch.properties.write && ch.writeValueWithResponse);
   const canWriteWithoutResponse = Boolean(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse);
-  const write = canWriteWithResponse
-    ? data => ch.writeValueWithResponse(data)
-    : canWriteWithoutResponse
-      ? data => ch.writeValueWithoutResponse(data)
+  // ใช้ writeWithoutResponse ก่อนเพื่อความเร็ว แต่คงก้อนข้อมูลที่ปลอดภัยไว้เพียง 20 ไบต์
+  const write = canWriteWithoutResponse
+    ? data => ch.writeValueWithoutResponse(data)
+    : canWriteWithResponse
+      ? data => ch.writeValueWithResponse(data)
       : data => ch.writeValue(data);
 
   // เครื่องพิมพ์รุ่นนี้รับข้อมูลภาพผ่าน BLE ได้อย่างเสถียรที่ก้อนละ 20 ไบต์
-  // แบบมี response ใช้ ACK ของเครื่องควบคุมจังหวะ จึงไม่ต้องหน่วงเวลาเพิ่ม
-  // แบบไม่มี response ใช้ delay สั้น และกลับโหมดปลอดภัยเมื่อ Bluetooth แจ้งข้อผิดพลาด
-  for (let i = 0; i < bytes.length; i += 20) {
+  // ส่งเป็นชุด 10 ก้อนก่อนพักสั้น ๆ: เร็วกว่าหน่วงทุกก้อน แต่ไม่เพิ่มขนาด packet จนภาพเสีย
+  for (let i = 0, chunkIndex = 0; i < bytes.length; i += PRINTER_WRITE_CHUNK_SIZE, chunkIndex += 1) {
     try {
-      await write(bytes.slice(i, i + 20));
-      if (canWriteWithResponse) {
-        if (i > 0 && i % 320 === 0) await sleep(0);
-      } else {
+      await write(bytes.slice(i, i + PRINTER_WRITE_CHUNK_SIZE));
+      if (canWriteWithoutResponse && (chunkIndex + 1) % PRINTER_WRITE_BURST_CHUNKS === 0) {
         await sleep(printerWriteWithoutResponseDelayMs);
+      } else if (i > 0 && i % 320 === 0) {
+        await sleep(0);
       }
     } catch (error) {
-      if (!canWriteWithResponse) printerWriteWithoutResponseDelayMs = 20;
+      if (canWriteWithoutResponse) printerWriteWithoutResponseDelayMs = 12;
       throw error;
     }
   }
@@ -1382,11 +1384,14 @@ function getSalesBillNetPrice(bill) {
 function summarizeSalesReportBills(bills) {
   const summaryMap = new Map();
   bills.forEach(bill => {
-    const key = String(bill.productId || bill.Product_Type || bill.productName || '-');
+    const productKey = String(bill.productId || bill.Product_Type || bill.productName || '-');
+    const discount = Math.min(100, Math.max(0, Number(bill.discount ?? bill.Discount ?? 0)));
+    const key = `${productKey}::${discount}`;
     const current = summaryMap.get(key) || {
       productId: bill.productId || bill.Product_Type,
       productName: bill.productName || '-',
       productImage: bill.productImage,
+      discount,
       quantity: 0,
       total: 0
     };
@@ -1394,7 +1399,24 @@ function summarizeSalesReportBills(bills) {
     current.total += getSalesBillNetPrice(bill);
     summaryMap.set(key, current);
   });
-  return [...summaryMap.values()].sort((a, b) => b.quantity - a.quantity || a.productName.localeCompare(b.productName, 'th'));
+  return [...summaryMap.values()].sort((a, b) => a.productName.localeCompare(b.productName, 'th') || a.discount - b.discount);
+}
+
+function groupSalesSummaryByProduct(summaryItems) {
+  const products = new Map();
+  summaryItems.forEach(item => {
+    // หนึ่งชื่อสินค้าแสดงครั้งเดียว แล้วแตกบรรทัดตามส่วนลดของสินค้านั้น
+    const key = String(item.productName || '-');
+    const group = products.get(key) || {
+      productId: item.productId,
+      productName: item.productName,
+      productImage: item.productImage,
+      discounts: []
+    };
+    group.discounts.push(item);
+    products.set(key, group);
+  });
+  return [...products.values()].sort((a, b) => a.productName.localeCompare(b.productName, 'th'));
 }
 
 function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
@@ -1402,18 +1424,20 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   const total = bills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
   const lines = [
     { text: 'D House x Café Amazon', align: 'center', bold: true },
-    { text: 'รายงานการขาย', align: 'center', bold: true },
-    { text: `${formatReportDate(startDate)} - ${formatReportDate(endDate)}`, align: 'center', fontSize: 18 },
-    { text: mode === 'summary' ? 'สรุปรวมสินค้า' : 'รายละเอียด', align: 'center' },
-    { text: '--------------------------------' }
+    { text: mode === 'summary' ? 'รายงานการขายสรุป' : 'รายงานการขาย', align: 'center', bold: true },
+    { text: `${formatReportDate(startDate)} - ${formatReportDate(endDate)}`, align: 'center', fontSize: 18 }
   ];
 
   if (mode === 'summary') {
-    summarizeSalesReportBills(bills).forEach(item => {
-      lines.push({ text: item.productName, bold: true });
-      lines.push({ leftText: `จำนวน ${item.quantity} แก้ว`, rightText: `฿${money(item.total)}` });
+    groupSalesSummaryByProduct(summarizeSalesReportBills(bills)).forEach(group => {
+      lines.push({ text: group.productName, bold: true });
+      group.discounts.forEach(item => {
+        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}` });
+      });
     });
   } else {
+    lines.push({ text: 'รายละเอียด', align: 'center' });
+    lines.push({ text: '--------------------------------' });
     bills.forEach(bill => {
       const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
       lines.push({ text: saleDate, fontSize: 17 });
@@ -1426,7 +1450,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
     });
   }
 
-  lines.push({ text: '--------------------------------' });
+  if (mode !== 'summary') lines.push({ text: '--------------------------------' });
   lines.push({ leftText: `รวมจำนวน ${bills.length} แก้ว`, rightText: `฿${money(total)}`, bold: true });
   return lines;
 }
@@ -1510,8 +1534,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
           <fieldset style="margin:0 0 14px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px;">
             <legend style="padding:0 6px; font-weight:700;">รูปแบบรายงาน</legend>
             <div style="display:flex; flex-wrap:wrap; gap:10px 22px;">
-              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="detail" checked> รายละเอียด</label>
-              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="summary"> สรุปรวมสินค้า</label>
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="summary" checked> สรุปรวมสินค้า</label>
+              <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="detail"> รายละเอียด</label>
             </div>
           </fieldset>
           <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
@@ -1532,18 +1556,18 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
 
   const renderReport = () => {
     const content = document.querySelector('#sales-report-content');
-    const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'detail';
+    const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'summary';
     const total = reportBills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
     const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;"><span>จำนวน ${reportBills.length.toLocaleString('th-TH')} แก้ว</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
 
     if (reportMode === 'summary') {
-      const rows = summarizeSalesReportBills(reportBills);
-      content.innerHTML = header + (rows.length ? `<div style="display:grid; gap:10px;">${rows.map(item => `
+      const groups = groupSalesSummaryByProduct(summarizeSalesReportBills(reportBills));
+      content.innerHTML = header + (groups.length ? `<div style="display:grid; gap:10px;">${groups.map(group => `
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
-          ${renderProductImage(item.productId, item.productName, item.productImage, 64)}
+          ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="font-weight:700; color:#1e293b;">${esc(item.productName)}</div>
-            <div style="display:flex; justify-content:space-between; gap:12px; margin-top:7px; color:#475569;"><span>จำนวน ${item.quantity.toLocaleString('th-TH')} แก้ว</span><strong style="color:#059669;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+            <div style="font-weight:700; color:#1e293b;">${esc(group.productName)}</div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% @${item.quantity.toLocaleString('th-TH')} แก้ว</span><strong style="color:#059669; white-space:nowrap;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>`).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -1605,7 +1629,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       const loaded = await loadReport();
       if (!loaded) return;
     }
-    const mode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'detail';
+    const mode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'summary';
     showSalesReportPrintPreview(selectedStartDate, selectedEndDate, mode, reportBills);
   };
   document.querySelectorAll('input[name="sales-report-mode"]').forEach(field => field.onchange = renderReport);

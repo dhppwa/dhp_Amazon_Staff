@@ -630,7 +630,7 @@ function openPrinterSettings() {
   };
 }
 
-const PRINTER_WRITE_CHUNK_SIZE = 20;
+const PRINTER_WRITE_CHUNK_SIZE = 40;
 const PRINTER_WRITE_BURST_CHUNKS = 60;
 let printerWriteWithoutResponseDelayMs = 0;
 
@@ -644,8 +644,8 @@ async function sendBytes(ch, bytes) {
       ? data => ch.writeValueWithResponse(data)
       : data => ch.writeValue(data);
 
-  // เครื่องพิมพ์รุ่นนี้รับข้อมูลภาพผ่าน BLE ได้อย่างเสถียรที่ก้อนละ 20 ไบต์
-  // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง: เรายังคงจำกัด packet ละ 20 ไบต์เพื่อไม่ให้ภาพภาษาไทยเพี้ยน
+  // ส่งข้อมูลภาพผ่าน BLE ก้อนละ 40 ไบต์ ตามค่าที่เลือกสำหรับเครื่องพิมพ์นี้
+  // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง เพื่อให้พิมพ์ได้เร็วที่สุด
   for (let i = 0, chunkIndex = 0; i < bytes.length; i += PRINTER_WRITE_CHUNK_SIZE, chunkIndex += 1) {
     try {
       await write(bytes.slice(i, i + PRINTER_WRITE_CHUNK_SIZE));

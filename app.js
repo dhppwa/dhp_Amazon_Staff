@@ -892,7 +892,7 @@ function createReceiptLines(data, billNo) {
       leftBold: true,
       rightBold: false
     },
-    ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
+    ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%`, rightBold: true }] : []),
     ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
     {
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
@@ -1435,7 +1435,7 @@ function renderAirPrintReceipt(data, billNo) {
         <hr>
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
         <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
-        ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
+        ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
         <p>คงเหลือ: ${esc(usage.remainingText)}</p>
@@ -1666,7 +1666,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   }
 
   if (mode !== 'summary') lines.push({ text: '--------------------------------' });
-  lines.push({ leftText: `รวมจำนวน ${bills.length} แก้ว`, rightText: `฿${money(total)}`, bold: true });
+  lines.push({ leftText: `รวมจำนวน ${bills.length} ${mode === 'summary' ? 'สิทธิ์' : 'แก้ว'}`, rightText: `฿${money(total)}`, bold: true, fontSize: 30, emphasis: true });
   return lines;
 }
 
@@ -1682,7 +1682,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     if (line.leftText !== undefined || line.rightText !== undefined) {
       const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
       const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
-      return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:${line.fontSize ? '15px' : '17px'};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
+      return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:${line.emphasis ? '22px' : (line.fontSize ? '15px' : '17px')};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
     }
     return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '15px' : '17px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
   }).join('');
@@ -1791,7 +1791,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
     const content = document.querySelector('#sales-report-content');
     const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'summary';
     const total = reportBills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
-    const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:12px; background:#ecfdf5; border-radius:10px; color:#065f46; font-weight:700;"><span>จำนวน ${reportBills.length.toLocaleString('th-TH')} แก้ว</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
+    const reportUnit = reportMode === 'summary' ? 'สิทธิ์' : 'แก้ว';
+    const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:14px; background:#ecfdf5; border-radius:10px; color:#065f46; font-size:1.12rem; font-weight:700;"><span>จำนวน ${reportBills.length.toLocaleString('th-TH')} ${reportUnit}</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
 
     if (reportMode === 'summary') {
       const groups = groupSalesSummaryByProduct(summarizeSalesReportBills(reportBills));
@@ -2000,6 +2001,7 @@ function renderClientDetailPage(data) {
 
       showPrintLoadingDialog('กำลังตรวจสอบสถานะคูปอง...');
 
+      let redemptionCommitted = false;
       try {
         // ต้องผ่านการตรวจ Coupon_No ล่าสุดจากฐานข้อมูลก่อน จึงค่อยเชื่อมต่อเครื่องพิมพ์
         const latestCoupon = await window.staffApi.validateCouponForRedeem(data.phone, data.couponNo);
@@ -2013,13 +2015,16 @@ function renderClientDetailPage(data) {
 
         updatePrintLoadingMessage('กำลังสร้างเลขบิล...');
         const generatedBillNo = await window.staffApi.generateBillNo();
-        if (!withoutPrinting && !useAirPrint) {
-          updatePrintLoadingMessage('กำลังส่งสั่งพิมพ์ไปยังเครื่องพิมพ์ Bluetooth...');
-          await runPrint(data, generatedBillNo);
-        }
-
         updatePrintLoadingMessage('กำลังบันทึกข้อมูลการใช้สิทธิ์...');
         await window.staffApi.commitRedeemTransaction(data, generatedBillNo);
+        redemptionCommitted = true;
+
+        // บันทึกสิทธิ์ก่อนเริ่มพิมพ์ เพื่อให้ฝั่ง Client จบรายการได้ทันที
+        // แต่ Staff ยังคงรอจนงานพิมพ์เสร็จแล้วจึงกลับหน้าหลัก
+        if (!withoutPrinting && !useAirPrint) {
+          updatePrintLoadingMessage('บันทึกใช้สิทธิ์แล้ว กำลังส่งคำสั่งพิมพ์ไปยังเครื่องพิมพ์ Bluetooth...');
+          await runPrint(data, generatedBillNo);
+        }
 
         removePrintLoadingDialog();
         if (withoutPrinting) {
@@ -2036,7 +2041,15 @@ function renderClientDetailPage(data) {
       } catch (err) {
         console.error(err);
         removePrintLoadingDialog();
-        if (String(err.message || '').includes('คูปองหมดอายุ')) {
+        if (redemptionCommitted) {
+          const errorMessage = String(err?.message ?? '').trim()
+            || 'ไม่สามารถเชื่อมต่อเครื่องพิมพ์ที่ตั้งค่าไว้ได้ กรุณาตรวจสอบเครื่องพิมพ์';
+          showAppDialog(`บันทึกและใช้สิทธิ์เรียบร้อยแล้ว แต่พิมพ์ใบเสร็จไม่สำเร็จ: ${errorMessage}`, {
+            title: 'พิมพ์ใบเสร็จไม่สำเร็จ',
+            actionLabel: 'กลับหน้าหลัก',
+            onAction: renderMainUI
+          });
+        } else if (String(err.message || '').includes('คูปองหมดอายุ')) {
           showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', { title: 'คูปองหมดอายุ' });
         } else {
           const errorMessage = String(err?.message ?? '').trim()

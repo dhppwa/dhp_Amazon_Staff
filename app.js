@@ -8,6 +8,8 @@ let adminSession = null;
 let isProcessingScan = false;
 let screenWakeLock = null;
 let printerStartupChecked = false;
+let bluetoothStartupVerified = false;
+let printerStartupCheckPromise = null;
 let scanWithoutPrinter = false;
 let sessionWithoutPrinter = false;
 const ADMIN_CREDENTIALS_KEY = 'amazonStaffRememberedAdminCredentials';
@@ -650,18 +652,16 @@ async function initializePrinterOnMainScreen() {
   // ตรวจ Bluetooth ก่อนตรวจการตั้งค่าเครื่องพิมพ์เสมอ เพื่อแจ้งผู้ใช้ได้ตั้งแต่เข้าหน้าแรก
   // getAvailability() มีใน Chromium/Android เท่านั้น; iOS Safari ไม่มี API สำหรับอ่านสถานะนี้
   if (await isBluetoothAdapterAvailable() === false) {
+    bluetoothStartupVerified = false;
     showAppDialog('Bluetooth ปิดอยู่ กรุณาเปิด Bluetooth และเปิดเครื่องพิมพ์ แล้วกดตรวจสอบอีกครั้ง', {
       title: 'เปิด Bluetooth',
       actionLabel: 'ตรวจสอบอีกครั้ง',
-      cancelLabel: 'ไม่พิมพ์',
-      onAction: () => initializePrinterOnMainScreen(),
-      onCancel: () => {
-        sessionWithoutPrinter = true;
-        scanWithoutPrinter = true;
-      }
+      onAction: () => initializePrinterOnMainScreen()
     });
-    return;
+    return false;
   }
+
+  bluetoothStartupVerified = true;
 
   const saved = getSavedPrinter();
   if (!saved) {
@@ -674,7 +674,7 @@ async function initializePrinterOnMainScreen() {
       },
       onCancel: closeStaffApplication
     });
-    return;
+    return true;
   }
 
   try {
@@ -687,6 +687,7 @@ async function initializePrinterOnMainScreen() {
       { allowSelect: true }
     );
   }
+  return true;
 }
 
 function openPrinterSettings() {
@@ -731,10 +732,23 @@ function openPrinterSettings() {
 const PRINTER_WRITE_CHUNK_SIZE = 64;
 // ใบเสร็จมีภาพและอาจพิมพ์ติดกัน 2 ใบ จึงใช้ขนาดที่เสถียรกว่าเฉพาะส่วนนี้
 const RECEIPT_WRITE_CHUNK_SIZE = 64;
-const PRINTER_BUFFER_CLEAR_DELAY_MS = 700;
-const PRINTER_WRITE_BURST_CHUNKS = 60;
-const PRINTER_WRITE_BURST_DELAY_MS = 0;
+const PRINTER_BUFFER_CLEAR_DELAY_MS = 1200;
+const PRINTER_POST_DATA_DRAIN_DELAY_MS = 900;
+const PRINTER_INTER_RECEIPT_DELAY_MS = 900;
+const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 500;
+// เครื่องพิมพ์บางรุ่นตอบรับ BLE เร็วกว่าที่บัฟเฟอร์ภายในรับภาพได้
+// จึงพักทุกก้อนเมื่อจำเป็นต้องใช้ writeWithoutResponse เพื่อไม่ให้ข้อมูลภาพขาด
+const PRINTER_WRITE_BURST_CHUNKS = 1;
+const PRINTER_WRITE_BURST_DELAY_MS = 20;
 let printerWriteWithoutResponseDelayMs = 0;
+let printerJobQueue = Promise.resolve();
+
+// ไม่ให้หลายหน้าจอหรือการแตะซ้ำส่ง byte เข้าเครื่องพิมพ์พร้อมกัน
+function enqueuePrinterJob(job) {
+  const queuedJob = printerJobQueue.then(job, job);
+  printerJobQueue = queuedJob.catch(() => undefined);
+  return queuedJob;
+}
 
 async function waitForPrinterBufferClear() {
   // รอให้เครื่องพิมพ์จัดการข้อมูลที่ค้างจากงานก่อนหน้า ก่อนเริ่มงานใหม่
@@ -773,7 +787,7 @@ async function sendBytes(ch, bytes, chunkSize = PRINTER_WRITE_CHUNK_SIZE, { forc
         await sleep(0);
       }
     } catch (error) {
-      if (canWriteWithoutResponse) printerWriteWithoutResponseDelayMs = 12;
+      if (canWriteWithoutResponse) printerWriteWithoutResponseDelayMs = 20;
       throw error;
     }
   }
@@ -847,7 +861,7 @@ function createReceiptLines(data, billNo) {
   const buildBlock = (isMerchantCopy = false) => [
     {
       text: 'D House x Café Amazon',
-      align: 'center',
+      align: isMerchantCopy ? 'left' : 'center',
       bold: true,
       isReceiptHeader: true,
       headerDot: isMerchantCopy,
@@ -867,7 +881,8 @@ function createReceiptLines(data, billNo) {
     {
       leftText: `${data.productName} 1 แก้ว`,
       rightText: isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE',
-      bold: true
+      leftBold: true,
+      rightBold: false
     },
     ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
     ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
@@ -892,13 +907,15 @@ function renderReceiptPreviewCards(data) {
 
   const renderLine = line => {
     if (line.isReceiptHeader) {
-      return `<div style="position:relative; min-height:28px; display:flex; align-items:flex-end; justify-content:center; font-weight:700; font-size:12px;">
+      return `<div style="position:relative; min-height:28px; display:flex; align-items:flex-end; justify-content:${line.align === 'left' ? 'flex-start' : 'center'}; font-weight:700; font-size:12px;">
         ${line.cornerText ? `<span style="position:absolute; top:4px; right:0; font-size:10px; font-weight:400; line-height:1.5;">${esc(line.cornerText)}</span>` : ''}
-        <span>${esc(line.text)}${line.headerDot ? ' ●' : ''}</span>
+        <span>${esc(line.text)}${line.headerDot ? ' <span style="font-size:8px; vertical-align:middle;">●</span>' : ''}</span>
       </div>`;
     }
     if (line.leftText !== undefined || line.rightText !== undefined) {
-      return `<div style="display:flex; justify-content:space-between; gap:7px; font-size:${line.fontSize ? '9px' : '10px'}; font-weight:${line.bold ? '700' : '400'};"><span>${esc(line.leftText || '')}</span><span style="text-align:right;">${esc(line.rightText || '')}</span></div>`;
+      const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
+      const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
+      return `<div style="display:flex; justify-content:space-between; gap:7px; font-size:${line.fontSize ? '9px' : '10px'};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
     }
     return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:10px; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
   };
@@ -975,11 +992,13 @@ async function printReceiptESC_POS(characteristic, lines, {
       const brandText = r.text;
       ctx.font = fontOf(r);
       const brandWidth = ctx.measureText(brandText).width;
-      const dotFontSize = 38;
+      const dotFontSize = 18;
       ctx.font = `bold ${dotFontSize}px ${thaiFontStack}`;
       const dotWidth = r.headerDot ? ctx.measureText('●').width : 0;
-      const gap = r.headerDot ? 5 : 0;
-      const startX = Math.max(PAD, (width - brandWidth - dotWidth - gap) / 2);
+      const gap = r.headerDot ? 3 : 0;
+      const startX = r.align === 'left'
+        ? PAD
+        : Math.max(PAD, (width - brandWidth - dotWidth - gap) / 2);
 
       ctx.textAlign = 'left';
       ctx.font = fontOf(r);
@@ -1049,6 +1068,10 @@ async function printReceiptESC_POS(characteristic, lines, {
     await sendBytes(characteristic, combined, chunkSize, { forceWithResponse });
   }
 
+  // คำสั่ง BLE ส่งเสร็จไม่ได้แปลว่าเครื่องพิมพ์ระบายภาพจากบัฟเฟอร์เสร็จแล้ว
+  // รอให้เครื่องจัดการภาพก่อนค่อยส่ง feed/cut เพื่อกันข้อมูลปลายใบเสีย
+  await sleep(PRINTER_POST_DATA_DRAIN_DELAY_MS);
+
   if (cutPaper) {
     // ส่งคำสั่งป้อนกระดาษและตัดแยกต่างหากหลังส่งภาพเสร็จ
     // เพื่อให้เครื่องพิมพ์ประมวลผลใบก่อนหน้าเสร็จก่อน โดยเฉพาะการส่งผ่าน BLE
@@ -1056,29 +1079,33 @@ async function printReceiptESC_POS(characteristic, lines, {
     await sleep(180);
     // GS V 0 คือ Full cut ที่รองรับกว้างกว่า GS V B n ในเครื่องพิมพ์ ESC/POS รุ่นเก่า
     await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]), chunkSize, { forceWithResponse });
-    await sleep(220);
+    await sleep(PRINTER_AFTER_CUT_SETTLE_DELAY_MS);
   }
 }
 
 async function runPrint(data, billNo) {
-  // ใช้เฉพาะเครื่องที่ตั้งค่าไว้ และไม่เปิดตัวเลือก Bluetooth ระหว่างการพิมพ์
-  const characteristic = await connectBluetoothPrinter();
-  await waitForPrinterBufferClear();
-  const receipts = createReceiptLines(data, billNo);
+  return enqueuePrinterJob(async () => {
+    // ใช้เฉพาะเครื่องที่ตั้งค่าไว้ และไม่เปิดตัวเลือก Bluetooth ระหว่างการพิมพ์
+    const characteristic = await connectBluetoothPrinter();
+    await waitForPrinterBufferClear();
+    const receipts = createReceiptLines(data, billNo);
 
-  const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
-    ? [receipts.original, receipts.copy]
-    : [receipts.copy];
+    const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
+      ? [receipts.original, receipts.copy]
+      : [receipts.copy];
 
-  // แต่ละ block จบด้วยคำสั่งตัดกระดาษหนึ่งครั้ง:
-  // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
-  for (let index = 0; index < receiptBlocks.length; index += 1) {
-    const receiptLines = receiptBlocks[index];
-    await printReceiptESC_POS(characteristic, receiptLines, {
-      chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-      forceWithResponse: false
-    });
-  }
+    // แต่ละ block จบด้วยคำสั่งตัดกระดาษหนึ่งครั้ง:
+    // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
+    for (let index = 0; index < receiptBlocks.length; index += 1) {
+      const receiptLines = receiptBlocks[index];
+      await printReceiptESC_POS(characteristic, receiptLines, {
+        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+        // ใบเสร็จใช้การตอบรับของอุปกรณ์ทุกก้อน เพื่อลดข้อความ/ภาพเพี้ยนขณะพิมพ์ต่อเนื่อง
+        forceWithResponse: true
+      });
+      if (index < receiptBlocks.length - 1) await sleep(PRINTER_INTER_RECEIPT_DELAY_MS);
+    }
+  });
 }
 
 async function printTestReceipt() {
@@ -1092,27 +1119,30 @@ async function printTestReceipt() {
     await ensurePrinterReadyFromUserAction();
     showPrintLoadingDialog('กำลังตรวจสอบและส่งใบเสร็จทดสอบ...');
     const characteristic = await connectBluetoothPrinter();
-    await waitForPrinterBufferClear();
-    const testData = {
-      name: 'ทดสอบระบบ',
-      phone: '-',
-      address: 'TEST',
-      project: 'ทดสอบระบบ',
-      productName: 'ใบเสร็จทดสอบเครื่องพิมพ์',
-      usedCount: 0,
-      allLimit: 1
-    };
-    const receipt = createReceiptLines(testData, `TEST-${Date.now().toString().slice(-6)}`);
-    const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
-      ? [receipt.original, receipt.copy]
-      : [receipt.copy];
-    for (let index = 0; index < receiptBlocks.length; index += 1) {
-      const receiptLines = receiptBlocks[index];
-      await printReceiptESC_POS(characteristic, receiptLines, {
-        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-        forceWithResponse: false
-      });
-    }
+    await enqueuePrinterJob(async () => {
+      await waitForPrinterBufferClear();
+      const testData = {
+        name: 'ทดสอบระบบ',
+        phone: '-',
+        address: 'TEST',
+        project: 'ทดสอบระบบ',
+        productName: 'ใบเสร็จทดสอบเครื่องพิมพ์',
+        usedCount: 0,
+        allLimit: 1
+      };
+      const receipt = createReceiptLines(testData, `TEST-${Date.now().toString().slice(-6)}`);
+      const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
+        ? [receipt.original, receipt.copy]
+        : [receipt.copy];
+      for (let index = 0; index < receiptBlocks.length; index += 1) {
+        const receiptLines = receiptBlocks[index];
+        await printReceiptESC_POS(characteristic, receiptLines, {
+          chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+          forceWithResponse: true
+        });
+        if (index < receiptBlocks.length - 1) await sleep(PRINTER_INTER_RECEIPT_DELAY_MS);
+      }
+    });
     showToast('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว');
   } catch (error) {
     console.error('Test print failed:', error);
@@ -1131,6 +1161,14 @@ async function startScanner({ allowWithoutPrinter = false } = {}) {
   const salesReportButton = document.querySelector('#btn-sales-report');
   const scannerStatus = document.querySelector('#scanner-status');
   if (!readerEl) return;
+
+  // ห้ามผ่านเข้ากล้องระหว่างที่ Bluetooth ยังปิดอยู่
+  if (!bluetoothStartupVerified) {
+    if (printerStartupCheckPromise) await printerStartupCheckPromise;
+    else await initializePrinterOnMainScreen();
+    if (!bluetoothStartupVerified) return;
+  }
+
   scanWithoutPrinter = Boolean(allowWithoutPrinter || sessionWithoutPrinter);
 
   if (!scanWithoutPrinter && supportsBluetoothPrinting()) {
@@ -1379,7 +1417,7 @@ function renderAirPrintReceipt(data, billNo) {
         <h3>ใบเสร็จรับสิทธิ์</h3>
       </div>
       <main id="airprint-receipt" class="airprint-receipt">
-        <h1>D House x Café Amazon${isMerchantOnly ? ' ●' : ''}</h1>
+        <h1 style="text-align:${isMerchantOnly ? 'left' : 'center'};">D House x Café Amazon${isMerchantOnly ? ' <span style="font-size:.65em; vertical-align:middle;">●</span>' : ''}</h1>
         ${isMerchantOnly ? '<p style="margin-top:4px; text-align:right; font-weight:400; line-height:1.5;">(ร้านค้าเก็บ)</p>' : ''}
         <p>ใบเสร็จรับสิทธิ์คูปอง</p>
         <hr>
@@ -1388,7 +1426,7 @@ function renderAirPrintReceipt(data, billNo) {
         <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
         <hr>
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
-        <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span>${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
+        <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
         ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
@@ -1598,9 +1636,10 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode === 'summary') {
     groupSalesSummaryByProduct(summarizeSalesReportBills(bills)).forEach(group => {
-      lines.push({ inlineLeftText: group.productName, inlineRightText: ` ฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
+      lines.push({ inlineLeftText: group.productName, inlineRightText: `\u00a0฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
       group.discounts.forEach(item => {
-        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}`, rightBold: false });
+        const discountedUnitPrice = item.productPrice * (1 - item.discount / 100);
+        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% ฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์`, rightText: `฿${money(item.total)}`, rightBold: false });
       });
     });
   } else {
@@ -1630,25 +1669,25 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     if (line.inlineLeftText !== undefined || line.inlineRightText !== undefined) {
       const leftWeight = line.leftBold ? '700' : '400';
       const rightWeight = line.rightBold ? '700' : '400';
-      return `<div style="font-size:${line.fontSize ? '10px' : '11px'};"><span style="font-weight:${leftWeight};">${esc(line.inlineLeftText || '')}</span><span style="font-weight:${rightWeight};">${esc(line.inlineRightText || '')}</span></div>`;
+      return `<div style="font-size:${line.fontSize ? '15px' : '17px'};"><span style="font-weight:${leftWeight};">${esc(line.inlineLeftText || '')}</span><span style="margin-left:6px; font-weight:${rightWeight};">${esc(line.inlineRightText || '')}</span></div>`;
     }
     if (line.leftText !== undefined || line.rightText !== undefined) {
       const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
       const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
-      return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:${line.fontSize ? '10px' : '11px'};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
+      return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:${line.fontSize ? '15px' : '17px'};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
     }
-    return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '10px' : '11px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
+    return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '15px' : '17px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
   }).join('');
 
   document.body.insertAdjacentHTML('beforeend', `
-    <div id="sales-report-print-dialog" class="staff-page" style="position:fixed; inset:0; z-index:50002; overflow:hidden; background:#6f8f7e; color:#1e293b;">
-      <section style="width:100%; min-height:100%; height:100%; display:flex; flex-direction:column; background:#6f8f7e;">
+    <div id="sales-report-print-dialog" class="staff-page" style="position:fixed; inset:0; z-index:50002; width:100vw; min-height:100dvh; overflow:hidden; background:#6f8f7e; color:#1e293b;">
+      <section style="width:100%; min-height:100dvh; height:100dvh; display:flex; flex-direction:column; background:#6f8f7e;">
         <header class="staff-page-header" style="flex:0 0 auto; background:#fff; border-bottom:1px solid #cbd5e1;">
           <button class="back" id="btn-close-sales-report-print" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
           <h3 style="color:#0284c7;">ตัวอย่างก่อนพิมพ์รายงาน</h3>
         </header>
-        <main style="flex:1; min-height:0; overflow:auto; padding:24px 16px 110px; box-sizing:border-box;">
-          <div id="sales-report-print-paper" style="width:58mm; max-width:100%; min-height:120px; margin:0 auto; padding:5mm 3mm; box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.45; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
+        <main style="flex:1; min-height:0; width:100%; overflow:auto; padding:clamp(18px,3vw,36px) clamp(16px,6vw,96px) 110px; box-sizing:border-box;">
+          <div id="sales-report-print-paper" style="width:min(100%,920px); min-height:100%; margin:0 auto; padding:clamp(20px,4vw,42px); box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.55; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
         </main>
         <footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
           <button id="btn-confirm-sales-report-print" type="button" style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
@@ -1671,13 +1710,15 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       await ensurePrinterReadyFromUserAction();
       showPrintLoadingDialog('กำลังพิมพ์รายงานการขาย...');
       const characteristic = await connectBluetoothPrinter();
-      await waitForPrinterBufferClear();
-      await printReceiptESC_POS(characteristic, lines, {
-        // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
-        cutPaper: true,
-        // ส่งแบบเร็วเหมือนใบเสร็จ โดยคงขนาดก้อน 64 bytes
-        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-        forceWithResponse: false
+      await enqueuePrinterJob(async () => {
+        await waitForPrinterBufferClear();
+        await printReceiptESC_POS(characteristic, lines, {
+          // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
+          cutPaper: true,
+          chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+          // ใช้โหมดเสถียรเหมือนใบเสร็จ เพราะรายงานมีภาพ raster จำนวนมาก
+          forceWithResponse: true
+        });
       });
       removePrintLoadingDialog();
       dialog.remove();
@@ -1750,8 +1791,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:8px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% @${item.quantity.toLocaleString('th-TH')} แก้ว</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`).join('')}</div>
+            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -2844,10 +2885,10 @@ function renderMainUI() {
   setTimeout(showInstallGuide, 400);
   if (!printerStartupChecked) {
     printerStartupChecked = true;
-    setTimeout(async () => {
+    printerStartupCheckPromise = (async () => {
       await waitForPendingServiceWorkerUpdate();
-      await initializePrinterOnMainScreen();
-    }, 1000);
+      return initializePrinterOnMainScreen();
+    })();
   }
 }
 

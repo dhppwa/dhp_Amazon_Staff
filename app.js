@@ -1575,9 +1575,9 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       await printReceiptESC_POS(characteristic, lines, {
         // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
         cutPaper: true,
-        // รายงานมีข้อมูลภาพต่อเนื่อง จึงรอ ACK ทุกก้อนเพื่อกันข้อมูลเพี้ยน
+        // ส่งแบบเร็วเหมือนใบเสร็จ โดยคงขนาดก้อน 64 bytes
         chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-        forceWithResponse: true
+        forceWithResponse: false
       });
       removePrintLoadingDialog();
       dialog.remove();

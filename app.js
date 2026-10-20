@@ -789,7 +789,7 @@ function createReceiptLines(data, billNo) {
       rightText: isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE',
       bold: true
     },
-    ...(isMerchantCopy ? [{ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
+    ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%` }] : []),
     ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
     {
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
@@ -1275,7 +1275,7 @@ function renderAirPrintReceipt(data, billNo) {
         <hr>
         <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
         <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span>${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
-        ${isMerchantOnly ? `<p class="airprint-row"><span>ส่วนลด</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
+        ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><span>${formatDiscountPercent(data.discount)}%</span></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
         <p>คงเหลือ: ${esc(usage.remainingText)}</p>

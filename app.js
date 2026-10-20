@@ -591,6 +591,18 @@ async function waitForPendingServiceWorkerUpdate() {
   }
 }
 
+async function isBluetoothAdapterAvailable() {
+  if (!navigator.bluetooth) return null;
+  // Chrome/Android รองรับ getAvailability() เพื่อบอกว่า Bluetooth ของเครื่องเปิดอยู่หรือไม่
+  if (typeof navigator.bluetooth.getAvailability !== 'function') return true;
+  try {
+    return await navigator.bluetooth.getAvailability();
+  } catch (error) {
+    console.warn('ตรวจสอบสถานะ Bluetooth ไม่สำเร็จ:', error);
+    return true;
+  }
+}
+
 async function initializePrinterOnMainScreen() {
   const saved = getSavedPrinter();
   if (!saved) {
@@ -602,6 +614,20 @@ async function initializePrinterOnMainScreen() {
         sessionWithoutPrinter = true;
       },
       onCancel: closeStaffApplication
+    });
+    return;
+  }
+
+  if (await isBluetoothAdapterAvailable() === false) {
+    showAppDialog('Bluetooth ปิดอยู่ กรุณาเปิด Bluetooth และเปิดเครื่องพิมพ์ แล้วกดตรวจสอบอีกครั้ง', {
+      title: 'เปิด Bluetooth',
+      actionLabel: 'ตรวจสอบอีกครั้ง',
+      cancelLabel: 'ไม่พิมพ์',
+      onAction: () => initializePrinterOnMainScreen(),
+      onCancel: () => {
+        sessionWithoutPrinter = true;
+        scanWithoutPrinter = true;
+      }
     });
     return;
   }
@@ -863,6 +889,8 @@ async function printReceiptESC_POS(characteristic, lines, {
         leftText: String(l.leftText ?? ''),
         rightText: String(l.rightText ?? ''),
         bold: l.bold,
+        leftBold: l.leftBold,
+        rightBold: l.rightBold,
         fontSize: l.fontSize
       });
     } else {
@@ -914,9 +942,11 @@ async function printReceiptESC_POS(characteristic, lines, {
       }
     } else if (r.isSplit) {
       ctx.textAlign = 'left';
+      ctx.font = fontOf({ ...r, bold: r.leftBold ?? r.bold });
       ctx.fillText(r.leftText, PAD, yPos);
 
       ctx.textAlign = 'right';
+      ctx.font = fontOf({ ...r, bold: r.rightBold ?? r.bold });
       ctx.fillText(r.rightText, width - PAD, yPos);
     } else {
       ctx.textAlign = 'left';
@@ -1466,6 +1496,7 @@ function summarizeSalesReportBills(bills) {
       productId: bill.productId || bill.Product_Type,
       productName: bill.productName || '-',
       productImage: bill.productImage,
+      productPrice: Math.max(0, Number(bill.productPrice ?? bill.Price ?? 0)),
       discount,
       quantity: 0,
       total: 0
@@ -1486,6 +1517,7 @@ function groupSalesSummaryByProduct(summaryItems) {
       productId: item.productId,
       productName: item.productName,
       productImage: item.productImage,
+      productPrice: item.productPrice,
       discounts: []
     };
     group.discounts.push(item);
@@ -1505,9 +1537,9 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode === 'summary') {
     groupSalesSummaryByProduct(summarizeSalesReportBills(bills)).forEach(group => {
-      lines.push({ text: group.productName, bold: true });
+      lines.push({ leftText: group.productName, rightText: `฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
       group.discounts.forEach(item => {
-        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}` });
+        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}`, rightBold: true });
       });
     });
   } else {
@@ -1535,7 +1567,9 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
   const previewRows = lines.map(line => {
     if (line.leftText !== undefined || line.rightText !== undefined) {
-      return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:${line.fontSize ? '10px' : '11px'}; font-weight:${line.bold ? '700' : '400'};"><span>${esc(line.leftText || '')}</span><span style="text-align:right;">${esc(line.rightText || '')}</span></div>`;
+      const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
+      const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
+      return `<div style="display:flex; justify-content:space-between; gap:8px; font-size:${line.fontSize ? '10px' : '11px'};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
     }
     return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '10px' : '11px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
   }).join('');
@@ -1650,7 +1684,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="font-weight:700; color:#1e293b;">${esc(group.productName)}</div>
+            <div style="display:flex; justify-content:space-between; gap:12px; font-weight:700; color:#1e293b;"><span>${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
             <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% @${item.quantity.toLocaleString('th-TH')} แก้ว</span><strong style="color:#059669; white-space:nowrap;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>`).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');

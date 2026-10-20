@@ -636,24 +636,32 @@ async function waitForPendingServiceWorkerUpdate() {
   }
 }
 
-async function isBluetoothAdapterAvailable() {
-  if (!navigator.bluetooth) return null;
-  // Chrome/Android รองรับ getAvailability() เพื่อบอกว่า Bluetooth ของเครื่องเปิดอยู่หรือไม่
-  if (typeof navigator.bluetooth.getAvailability !== 'function') return true;
+async function getBluetoothStartupStatus() {
+  // Safari/iOS ไม่มี Web Bluetooth จึงไม่บังคับด่านนี้ เพราะใช้หน้าพิมพ์ของระบบแทน
+  if (!navigator.bluetooth) return { usesWebBluetooth: false, available: null };
+
+  // ถ้าเป็นเบราว์เซอร์ที่มี Web Bluetooth แต่ไม่มี API ตรวจสถานะ ห้ามเดาว่า "เปิดแล้ว"
+  if (typeof navigator.bluetooth.getAvailability !== 'function') {
+    return { usesWebBluetooth: true, available: null };
+  }
+
   try {
-    return await navigator.bluetooth.getAvailability();
+    return { usesWebBluetooth: true, available: Boolean(await navigator.bluetooth.getAvailability()) };
   } catch (error) {
     console.warn('ตรวจสอบสถานะ Bluetooth ไม่สำเร็จ:', error);
-    return true;
+    return { usesWebBluetooth: true, available: null };
   }
 }
 
 async function initializePrinterOnMainScreen() {
   // ตรวจ Bluetooth ก่อนตรวจการตั้งค่าเครื่องพิมพ์เสมอ เพื่อแจ้งผู้ใช้ได้ตั้งแต่เข้าหน้าแรก
-  // getAvailability() มีใน Chromium/Android เท่านั้น; iOS Safari ไม่มี API สำหรับอ่านสถานะนี้
-  if (await isBluetoothAdapterAvailable() === false) {
+  const bluetoothStatus = await getBluetoothStartupStatus();
+  if (bluetoothStatus.usesWebBluetooth && bluetoothStatus.available !== true) {
     bluetoothStartupVerified = false;
-    showAppDialog('Bluetooth ปิดอยู่ กรุณาเปิด Bluetooth และเปิดเครื่องพิมพ์ แล้วกดตรวจสอบอีกครั้ง', {
+    const message = bluetoothStatus.available === false
+      ? 'Bluetooth ปิดอยู่ กรุณาเปิด Bluetooth และเปิดเครื่องพิมพ์ แล้วกดตรวจสอบอีกครั้ง'
+      : 'ไม่สามารถตรวจสอบสถานะ Bluetooth จากเบราว์เซอร์นี้ได้ กรุณาเปิดผ่าน Google Chrome หรือ PWA ที่ติดตั้งแล้ว แล้วกดตรวจสอบอีกครั้ง';
+    showAppDialog(message, {
       title: 'เปิด Bluetooth',
       actionLabel: 'ตรวจสอบอีกครั้ง',
       onAction: () => initializePrinterOnMainScreen()
@@ -2885,10 +2893,8 @@ function renderMainUI() {
   setTimeout(showInstallGuide, 400);
   if (!printerStartupChecked) {
     printerStartupChecked = true;
-    printerStartupCheckPromise = (async () => {
-      await waitForPendingServiceWorkerUpdate();
-      return initializePrinterOnMainScreen();
-    })();
+    // ต้องตรวจ Bluetooth ทันที เพื่อไม่ให้ผู้ใช้กดเปิดกล้องหรือเลือกเครื่องพิมพ์ก่อนผ่านด่านนี้
+    printerStartupCheckPromise = initializePrinterOnMainScreen();
   }
 }
 

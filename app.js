@@ -660,6 +660,8 @@ function openPrinterSettings() {
 const PRINTER_WRITE_CHUNK_SIZE = 85;///ความยาว/บ๊อค 90 จะเพี้ยน
 // ใบเสร็จมีภาพและอาจพิมพ์ติดกัน 2 ใบ จึงใช้ขนาดที่เสถียรกว่าเฉพาะส่วนนี้
 const RECEIPT_WRITE_CHUNK_SIZE = 80;
+// ให้เครื่องพิมพ์เคลียร์บัฟเฟอร์และตัดใบแรกเสร็จก่อนส่งใบร้านค้า
+const RECEIPT_COPY_DELAY_MS = 700;
 const PRINTER_WRITE_BURST_CHUNKS = 60;
 let printerWriteWithoutResponseDelayMs = 0;
 
@@ -967,8 +969,10 @@ async function runPrint(data, billNo) {
 
   // แต่ละ block จบด้วยคำสั่งตัดกระดาษหนึ่งครั้ง:
   // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
-  for (const receiptLines of receiptBlocks) {
+  for (let index = 0; index < receiptBlocks.length; index += 1) {
+    const receiptLines = receiptBlocks[index];
     await printReceiptESC_POS(characteristic, receiptLines, { chunkSize: RECEIPT_WRITE_CHUNK_SIZE });
+    if (index < receiptBlocks.length - 1) await sleep(RECEIPT_COPY_DELAY_MS);
   }
 }
 
@@ -996,8 +1000,10 @@ async function printTestReceipt() {
     const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
       ? [receipt.original, receipt.copy]
       : [receipt.copy];
-    for (const receiptLines of receiptBlocks) {
+    for (let index = 0; index < receiptBlocks.length; index += 1) {
+      const receiptLines = receiptBlocks[index];
       await printReceiptESC_POS(characteristic, receiptLines, { chunkSize: RECEIPT_WRITE_CHUNK_SIZE });
+      if (index < receiptBlocks.length - 1) await sleep(RECEIPT_COPY_DELAY_MS);
     }
     showToast('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว');
   } catch (error) {

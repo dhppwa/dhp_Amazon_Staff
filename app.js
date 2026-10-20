@@ -12,6 +12,48 @@ let scanWithoutPrinter = false;
 let sessionWithoutPrinter = false;
 const ADMIN_CREDENTIALS_KEY = 'amazonStaffRememberedAdminCredentials';
 
+// Safari/iOS บางบริบท (เช่น PWA/Private Browsing) อาจไม่อนุญาต localStorage
+// การจำรหัสจึงต้องไม่ทำให้การยืนยันสิทธิ์ผู้ดูแลล้มเหลว
+function getSavedDeviceValue(key) {
+  try {
+    return window.localStorage?.getItem(key) ?? null;
+  } catch (error) {
+    console.info('ไม่สามารถอ่านข้อมูลที่บันทึกในอุปกรณ์ได้:', error?.message || error);
+    return null;
+  }
+}
+
+function setSavedDeviceValue(key, value) {
+  try {
+    window.localStorage?.setItem(key, value);
+    return true;
+  } catch (error) {
+    console.info('ไม่สามารถบันทึกข้อมูลในอุปกรณ์ได้:', error?.message || error);
+    return false;
+  }
+}
+
+function removeSavedDeviceValue(key) {
+  try {
+    window.localStorage?.removeItem(key);
+    return true;
+  } catch (error) {
+    console.info('ไม่สามารถล้างข้อมูลที่บันทึกในอุปกรณ์ได้:', error?.message || error);
+    return false;
+  }
+}
+
+// ป้องกันการดึงจากขอบบนเพื่อ Refresh หน้าเว็บ ซึ่งทำให้ PWA กลับสู่หน้าหลัก
+let staffTouchStartY = 0;
+document.addEventListener('touchstart', event => {
+  staffTouchStartY = event.touches[0]?.clientY || 0;
+}, { passive: true });
+document.addEventListener('touchmove', event => {
+  const isPullingDown = (event.touches[0]?.clientY || 0) > staffTouchStartY;
+  const atTop = (document.scrollingElement?.scrollTop || 0) <= 0;
+  if (isPullingDown && atTop) event.preventDefault();
+}, { passive: false });
+
 // กันหน้าจอดับขณะใช้งาน Staff เพื่อไม่ให้ Bluetooth/การสแกนถูกระบบพักการทำงาน
 async function keepStaffScreenAwake() {
   if (!navigator.wakeLock || document.visibilityState !== 'visible' || screenWakeLock) return;
@@ -57,8 +99,9 @@ const esc = val => removeVisibleProductCode(val).replace(/[&<>"']/g, c => ({ '&'
 function maskPhoneNumber(phone) {
   if (!phone) return '-';
   const str = String(phone).trim();
-  if (str.length <= 4) return 'xxxx';
-  return str.slice(0, -4) + 'xxxx';
+  if (str === '-') return '-';
+  if (str.length <= 4) return 'X'.repeat(str.length);
+  return `${'X'.repeat(str.length - 4)}${str.slice(-4)}`;
 }
 
 function getMemberLoginDisplay(member = {}, fallbackPhone = '', maskPhone = false) {
@@ -883,7 +926,16 @@ async function printReceiptESC_POS(characteristic, lines, {
   for (const l of lines) {
     m.font = fontOf(l);
 
-    if (l.leftText !== undefined || l.rightText !== undefined) {
+    if (l.inlineLeftText !== undefined || l.inlineRightText !== undefined) {
+      rows.push({
+        isInline: true,
+        inlineLeftText: String(l.inlineLeftText ?? ''),
+        inlineRightText: String(l.inlineRightText ?? ''),
+        leftBold: l.leftBold,
+        rightBold: l.rightBold,
+        fontSize: l.fontSize
+      });
+    } else if (l.leftText !== undefined || l.rightText !== undefined) {
       rows.push({
         isSplit: true,
         leftText: String(l.leftText ?? ''),
@@ -940,6 +992,13 @@ async function printReceiptESC_POS(characteristic, lines, {
         // เว้นด้านบนให้สระและวรรณยุกต์ภาษาไทยไม่ถูกขอบ Canvas ตัด
         ctx.fillText(r.cornerText, width - PAD, yPos - 8);
       }
+    } else if (r.isInline) {
+      ctx.textAlign = 'left';
+      ctx.font = fontOf({ ...r, bold: r.leftBold });
+      ctx.fillText(r.inlineLeftText, PAD, yPos);
+      const leftWidth = ctx.measureText(r.inlineLeftText).width;
+      ctx.font = fontOf({ ...r, bold: r.rightBold });
+      ctx.fillText(r.inlineRightText, PAD + leftWidth, yPos);
     } else if (r.isSplit) {
       ctx.textAlign = 'left';
       ctx.font = fontOf({ ...r, bold: r.leftBold ?? r.bold });
@@ -1537,9 +1596,9 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode === 'summary') {
     groupSalesSummaryByProduct(summarizeSalesReportBills(bills)).forEach(group => {
-      lines.push({ leftText: group.productName, rightText: `฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
+      lines.push({ inlineLeftText: group.productName, inlineRightText: ` ฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
       group.discounts.forEach(item => {
-        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}`, rightBold: true });
+        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% @${item.quantity} แก้ว`, rightText: `฿${money(item.total)}`, rightBold: false });
       });
     });
   } else {
@@ -1566,6 +1625,11 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#sales-report-print-dialog')?.remove();
   const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
   const previewRows = lines.map(line => {
+    if (line.inlineLeftText !== undefined || line.inlineRightText !== undefined) {
+      const leftWeight = line.leftBold ? '700' : '400';
+      const rightWeight = line.rightBold ? '700' : '400';
+      return `<div style="font-size:${line.fontSize ? '10px' : '11px'};"><span style="font-weight:${leftWeight};">${esc(line.inlineLeftText || '')}</span><span style="font-weight:${rightWeight};">${esc(line.inlineRightText || '')}</span></div>`;
+    }
     if (line.leftText !== undefined || line.rightText !== undefined) {
       const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
       const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
@@ -1684,8 +1748,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="display:flex; justify-content:space-between; gap:12px; font-weight:700; color:#1e293b;"><span>${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% @${item.quantity.toLocaleString('th-TH')} แก้ว</span><strong style="color:#059669; white-space:nowrap;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>`).join('')}</div>
+            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:8px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% @${item.quantity.toLocaleString('th-TH')} แก้ว</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -2604,9 +2668,9 @@ async function openAdminLoginDialog() {
 
   let rememberedAdminCredentials = null;
   try {
-    rememberedAdminCredentials = JSON.parse(localStorage.getItem(ADMIN_CREDENTIALS_KEY) || 'null');
+    rememberedAdminCredentials = JSON.parse(getSavedDeviceValue(ADMIN_CREDENTIALS_KEY) || 'null');
   } catch (_) {
-    localStorage.removeItem(ADMIN_CREDENTIALS_KEY);
+    removeSavedDeviceValue(ADMIN_CREDENTIALS_KEY);
   }
   const rememberedUsername = String(rememberedAdminCredentials?.username || '');
   const rememberedPassword = String(rememberedAdminCredentials?.password || '');
@@ -2669,9 +2733,9 @@ async function openAdminLoginDialog() {
       const password = String(formData.get('password') || '');
       adminSession = await window.staffApi.verifyAdminCredentials(username, password);
       if (formData.get('rememberPassword')) {
-        localStorage.setItem(ADMIN_CREDENTIALS_KEY, JSON.stringify({ username, password }));
+        setSavedDeviceValue(ADMIN_CREDENTIALS_KEY, JSON.stringify({ username, password }));
       } else {
-        localStorage.removeItem(ADMIN_CREDENTIALS_KEY);
+        removeSavedDeviceValue(ADMIN_CREDENTIALS_KEY);
       }
       dialog.remove();
       openHouseManagementModal();

@@ -1548,7 +1548,8 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       showPrintLoadingDialog('กำลังพิมพ์รายงานการขาย...');
       const characteristic = await connectBluetoothPrinter();
       await printReceiptESC_POS(characteristic, lines, {
-        cutPaper: false,
+        // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
+        cutPaper: true,
         chunkSize: getReportPrintChunkSize(lines)
       });
       removePrintLoadingDialog();

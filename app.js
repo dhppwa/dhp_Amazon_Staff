@@ -564,6 +564,33 @@ async function closeStaffApplication() {
   }, 150);
 }
 
+// รอให้ Service Worker อัปเดต/รีโหลดหน้าเสร็จก่อน เพื่อไม่ให้ Dialog เครื่องพิมพ์เด้งแล้วหาย
+// และถูกแสดงซ้ำหลัง PWA โหลดหน้าใหม่
+async function waitForPendingServiceWorkerUpdate() {
+  if (!navigator.serviceWorker) return;
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.installing && !registration?.waiting) return;
+
+    await new Promise(resolve => {
+      let finished = false;
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve();
+      };
+      const timer = setTimeout(finish, 3500);
+      navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
+      registration.installing?.addEventListener('statechange', () => {
+        if (!registration.installing || registration.installing.state === 'activated') finish();
+      });
+    });
+  } catch (error) {
+    console.warn('ตรวจสอบการอัปเดต PWA ไม่สำเร็จ:', error);
+  }
+}
+
 async function initializePrinterOnMainScreen() {
   const saved = getSavedPrinter();
   if (!saved) {
@@ -1695,11 +1722,9 @@ function renderClientDetailPage(data) {
         <h3>ข้อมูลสมาชิก</h3>
       </div>
 
-      <div style="max-width:500px; width:100%; margin:0 auto; padding:1.25rem; box-sizing:border-box;">
-        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-          <h3 style="margin:0 0 0.75rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">👤 รายละเอียดข้อมูลสมาชิก</h3>
-          
-          <div style="display:flex; flex-direction:column; gap:0.4rem; font-size:0.95rem; color:#334155;">
+      <div style="max-width:500px; width:100%; margin:0 auto; padding:0.65rem 0.85rem 0.85rem; box-sizing:border-box;">
+        <div style="border:1px solid #e5e7eb; border-radius:12px; padding:0.8rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
+          <div style="display:flex; flex-direction:column; gap:0.16rem; font-size:0.88rem; line-height:1.32; color:#334155;">
             <p style="margin:0;"><strong>ชื่อ:</strong> ${esc(displayName)}</p>
             <p style="margin:0;"><strong>เบอร์โทร:</strong> ${esc(maskPhoneNumber(data.phone))}</p>
             <p style="margin:0;"><strong>รายละเอียด / บ้านเลขที่:</strong> ${esc(data.address)}</p>
@@ -1709,30 +1734,30 @@ function renderClientDetailPage(data) {
             <p style="margin:0;"><strong>ส่วนลด:</strong> <span style="color:#dc2626; font-weight:bold;">${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</span></p>
           </div>
 
-          <div style="display:flex; justify-content:center; margin:1rem 0;">
-            ${renderProductImage(data.productId, data.productName, imgUrl, 200)}
+          <div style="display:flex; justify-content:center; margin:0.55rem 0;">
+            ${renderProductImage(data.productId, data.productName, imgUrl, 130)}
           </div>
 
-          <div style="display:flex; justify-content:space-between; gap:0.75rem; margin:0.75rem 0 0.25rem; padding:0.65rem 0.75rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.92rem;">
+          <div style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.45rem 0 0.2rem; padding:0.5rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
             <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
             <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
           </div>
           ${/* ซ่อนพรีวิวใบเสร็จหลังสแกน QR แต่ยังคงฟังก์ชันพิมพ์จริงไว้ */ ''}
           
-          <div style="margin-top:1.25rem; display:flex; flex-direction:column; gap:0.6rem;">
+          <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
               hasCouponOrProduct
                 ? scanWithoutPrinter
-                  ? `<button id="btn-confirm-redeem" style="width:100%; padding:0.9rem; background:#059669; color:#fff; border:none; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">✅ ยืนยันใช้สิทธิ์ (ไม่พิมพ์)</button>`
-                  : `<div style="display:flex; gap:.6rem;">
-                      <button id="btn-confirm-redeem" style="flex:1; padding:0.9rem; background:#059669; color:#fff; border:none; border-radius:8px; font-size:1rem; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">🖨️ พิมพ์ใบเสร็จ</button>
-                      <button id="btn-confirm-no-print" style="padding:.9rem; background:#64748b; color:#fff; border:none; border-radius:8px; font-size:.95rem; font-weight:bold; cursor:pointer;">ไม่พิมพ์</button>
+                  ? `<button id="btn-confirm-redeem" style="width:100%; padding:0.72rem; background:#059669; color:#fff; border:none; border-radius:8px; font-size:0.95rem; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">✅ ยืนยันใช้สิทธิ์ (ไม่พิมพ์)</button>`
+                  : `<div style="display:flex; gap:.5rem;">
+                      <button id="btn-confirm-redeem" style="flex:1; padding:0.72rem; background:#059669; color:#fff; border:none; border-radius:8px; font-size:0.95rem; font-weight:bold; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.1);">🖨️ พิมพ์ใบเสร็จ</button>
+                      <button id="btn-confirm-no-print" style="padding:.72rem; background:#64748b; color:#fff; border:none; border-radius:8px; font-size:.9rem; font-weight:bold; cursor:pointer;">ไม่พิมพ์</button>
                     </div>`
                 : `<div style="background:#fffbebe6; color:#b45309; padding:0.75rem; border-radius:8px; text-align:center; font-size:0.9rem; border:1px solid #fef3c7;">
                     ⚠️ ไม่พบคูปองหรือสินค้าที่เปิดใช้งานในขณะนี้ (ไม่สามารถพิมพ์ใบเสร็จได้)
                   </div>`
             }
-            <button id="btn-open-history" style="width:100%; padding:0.65rem; background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:0.9rem; cursor:pointer;">
+            <button id="btn-open-history" style="width:100%; padding:0.55rem; background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem; cursor:pointer;">
               📜 ดูประวัติการใช้สิทธิ์
             </button>
           </div>
@@ -2663,7 +2688,10 @@ function renderMainUI() {
   setTimeout(showInstallGuide, 400);
   if (!printerStartupChecked) {
     printerStartupChecked = true;
-    setTimeout(initializePrinterOnMainScreen, 700);
+    setTimeout(async () => {
+      await waitForPendingServiceWorkerUpdate();
+      await initializePrinterOnMainScreen();
+    }, 1000);
   }
 }
 

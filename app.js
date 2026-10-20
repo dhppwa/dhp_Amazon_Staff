@@ -657,7 +657,7 @@ function openPrinterSettings() {
   };
 }
 
-const PRINTER_WRITE_CHUNK_SIZE = 88;///ความยาว/บ๊อค 90 จะเพี้ยน
+const PRINTER_WRITE_CHUNK_SIZE = 85;///ความยาว/บ๊อค 90 จะเพี้ยน
 const PRINTER_WRITE_BURST_CHUNKS = 60;
 let printerWriteWithoutResponseDelayMs = 0;
 
@@ -671,7 +671,7 @@ async function sendBytes(ch, bytes) {
       ? data => ch.writeValueWithResponse(data)
       : data => ch.writeValue(data);
 
-  // ส่งข้อมูลภาพผ่าน BLE ก้อนละ 88 ไบต์ ตามค่าที่เลือกสำหรับเครื่องพิมพ์นี้
+  // ส่งข้อมูลภาพผ่าน BLE ก้อนละ 85 ไบต์ ตามค่าที่เลือกสำหรับเครื่องพิมพ์นี้
   // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง เพื่อให้พิมพ์ได้เร็วที่สุด
   for (let i = 0, chunkIndex = 0; i < bytes.length; i += PRINTER_WRITE_CHUNK_SIZE, chunkIndex += 1) {
     try {

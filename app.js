@@ -657,9 +657,9 @@ function openPrinterSettings() {
   };
 }
 
-const PRINTER_WRITE_CHUNK_SIZE = 80;///ความยาว/บ๊อค 90 จะเพี้ยน
+const PRINTER_WRITE_CHUNK_SIZE = 64;
 // ใบเสร็จมีภาพและอาจพิมพ์ติดกัน 2 ใบ จึงใช้ขนาดที่เสถียรกว่าเฉพาะส่วนนี้
-const RECEIPT_WRITE_CHUNK_SIZE = 80;
+const RECEIPT_WRITE_CHUNK_SIZE = 64;
 // ให้เครื่องพิมพ์เคลียร์บัฟเฟอร์และตัดใบแรกเสร็จก่อนส่งใบร้านค้า
 const RECEIPT_COPY_DELAY_MS = 700;
 const PRINTER_BUFFER_CLEAR_DELAY_MS = 700;

@@ -657,13 +657,15 @@ function openPrinterSettings() {
   };
 }
 
-const PRINTER_WRITE_CHUNK_SIZE = 85;///ความยาว/บ๊อค 90 จะเพี้ยน
+const PRINTER_WRITE_CHUNK_SIZE = 80;///ความยาว/บ๊อค 90 จะเพี้ยน
 // ใบเสร็จมีภาพและอาจพิมพ์ติดกัน 2 ใบ จึงใช้ขนาดที่เสถียรกว่าเฉพาะส่วนนี้
 const RECEIPT_WRITE_CHUNK_SIZE = 80;
 // ให้เครื่องพิมพ์เคลียร์บัฟเฟอร์และตัดใบแรกเสร็จก่อนส่งใบร้านค้า
 const RECEIPT_COPY_DELAY_MS = 700;
 const PRINTER_BUFFER_CLEAR_DELAY_MS = 700;
-const PRINTER_WRITE_BURST_CHUNKS = 60;
+// โหมดเร็ว: พักสั้น ๆ ทุกชุดข้อมูลเพื่อให้เครื่องพิมพ์ระบาย BLE buffer ได้ทัน
+const PRINTER_WRITE_BURST_CHUNKS = 8;
+const PRINTER_WRITE_BURST_DELAY_MS = 8;
 let printerWriteWithoutResponseDelayMs = 0;
 
 async function waitForPrinterBufferClear() {
@@ -678,11 +680,14 @@ function getReportPrintChunkSize(lines) {
     : PRINTER_WRITE_CHUNK_SIZE;
 }
 
-async function sendBytes(ch, bytes, chunkSize = PRINTER_WRITE_CHUNK_SIZE) {
+async function sendBytes(ch, bytes, chunkSize = PRINTER_WRITE_CHUNK_SIZE, { forceWithResponse = false } = {}) {
   const canWriteWithResponse = Boolean(ch.properties.write && ch.writeValueWithResponse);
   const canWriteWithoutResponse = Boolean(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse);
-  // ใช้ writeWithoutResponse ก่อนเพื่อความเร็ว แต่คงก้อนข้อมูลที่ปลอดภัยไว้เพียง 20 ไบต์
-  const write = canWriteWithoutResponse
+  // ใช้ writeWithoutResponse เพื่อความเร็ว แล้วควบคุมบัฟเฟอร์ด้วยจังหวะพักระหว่างชุดข้อมูล
+  const useWriteWithoutResponse = !forceWithResponse && canWriteWithoutResponse;
+  const write = forceWithResponse && canWriteWithResponse
+    ? data => ch.writeValueWithResponse(data)
+    : useWriteWithoutResponse
     ? data => ch.writeValueWithoutResponse(data)
     : canWriteWithResponse
       ? data => ch.writeValueWithResponse(data)
@@ -690,13 +695,12 @@ async function sendBytes(ch, bytes, chunkSize = PRINTER_WRITE_CHUNK_SIZE) {
 
   const safeChunkSize = Math.max(1, Number(chunkSize) || PRINTER_WRITE_CHUNK_SIZE);
   // ส่งข้อมูลภาพผ่าน BLE ตามขนาดก้อนที่เหมาะกับงานพิมพ์แต่ละประเภท
-  // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง เพื่อให้พิมพ์ได้เร็วที่สุด
+  // ส่งเป็นชุดเล็ก แล้วพักสั้น ๆ เพื่อกันบัฟเฟอร์เครื่องพิมพ์เต็ม
   for (let i = 0, chunkIndex = 0; i < bytes.length; i += safeChunkSize, chunkIndex += 1) {
     try {
       await write(bytes.slice(i, i + safeChunkSize));
-      if (canWriteWithoutResponse && (chunkIndex + 1) % PRINTER_WRITE_BURST_CHUNKS === 0) {
-        // คืน event loop เป็นระยะโดยไม่หน่วงเวลา เพื่อให้ Bluetooth flush queue ตามจังหวะของระบบ
-        await sleep(printerWriteWithoutResponseDelayMs);
+      if (useWriteWithoutResponse && (chunkIndex + 1) % PRINTER_WRITE_BURST_CHUNKS === 0) {
+        await sleep(Math.max(PRINTER_WRITE_BURST_DELAY_MS, printerWriteWithoutResponseDelayMs));
       } else if (i > 0 && i % 320 === 0) {
         await sleep(0);
       }
@@ -839,7 +843,11 @@ function renderReceiptPreviewCards(data) {
   </div>`;
 }
 
-async function printReceiptESC_POS(characteristic, lines, { cutPaper = true, chunkSize = PRINTER_WRITE_CHUNK_SIZE } = {}) {
+async function printReceiptESC_POS(characteristic, lines, {
+  cutPaper = true,
+  chunkSize = PRINTER_WRITE_CHUNK_SIZE,
+  forceWithResponse = false
+} = {}) {
   if (document.fonts) await document.fonts.ready;
 
   const width = PRINT_WIDTH_DOTS, FONT_PX = 24, LINE_H = 34, PAD = 4;
@@ -926,7 +934,7 @@ async function printReceiptESC_POS(characteristic, lines, { cutPaper = true, chu
   });
 
   const imgData = ctx.getImageData(0, 0, width, height).data;
-  await sendBytes(characteristic, new Uint8Array([0x1B, 0x40, 0x1B, 0x33, 0x18]), chunkSize);
+  await sendBytes(characteristic, new Uint8Array([0x1B, 0x40, 0x1B, 0x33, 0x18]), chunkSize, { forceWithResponse });
   await sleep(5);
 
   const n1 = width & 0xFF, n2 = (width >> 8) & 0xFF;
@@ -950,16 +958,16 @@ async function printReceiptESC_POS(characteristic, lines, { cutPaper = true, chu
     combined.set(chunkHeader, 0);
     combined.set(lineBytes, chunkHeader.length);
     combined.set([0x0A], chunkHeader.length + lineBytes.length);
-    await sendBytes(characteristic, combined, chunkSize);
+    await sendBytes(characteristic, combined, chunkSize, { forceWithResponse });
   }
 
   if (cutPaper) {
     // ส่งคำสั่งป้อนกระดาษและตัดแยกต่างหากหลังส่งภาพเสร็จ
     // เพื่อให้เครื่องพิมพ์ประมวลผลใบก่อนหน้าเสร็จก่อน โดยเฉพาะการส่งผ่าน BLE
-    await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05]), chunkSize);
+    await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05]), chunkSize, { forceWithResponse });
     await sleep(180);
     // GS V 0 คือ Full cut ที่รองรับกว้างกว่า GS V B n ในเครื่องพิมพ์ ESC/POS รุ่นเก่า
-    await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]), chunkSize);
+    await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]), chunkSize, { forceWithResponse });
     await sleep(220);
   }
 }
@@ -978,7 +986,11 @@ async function runPrint(data, billNo) {
   // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
   for (let index = 0; index < receiptBlocks.length; index += 1) {
     const receiptLines = receiptBlocks[index];
-    await printReceiptESC_POS(characteristic, receiptLines, { chunkSize: RECEIPT_WRITE_CHUNK_SIZE });
+    await printReceiptESC_POS(characteristic, receiptLines, {
+      chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+      // ใบร้านค้าใช้ก้อนเล็กและจังหวะพักระหว่างชุดข้อมูลเพื่อไม่ให้บัฟเฟอร์ล้น
+      forceWithResponse: false
+    });
     if (index < receiptBlocks.length - 1) await sleep(RECEIPT_COPY_DELAY_MS);
   }
 }
@@ -1010,7 +1022,10 @@ async function printTestReceipt() {
       : [receipt.copy];
     for (let index = 0; index < receiptBlocks.length; index += 1) {
       const receiptLines = receiptBlocks[index];
-      await printReceiptESC_POS(characteristic, receiptLines, { chunkSize: RECEIPT_WRITE_CHUNK_SIZE });
+      await printReceiptESC_POS(characteristic, receiptLines, {
+        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+        forceWithResponse: false
+      });
       if (index < receiptBlocks.length - 1) await sleep(RECEIPT_COPY_DELAY_MS);
     }
     showToast('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว');
@@ -1566,7 +1581,9 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       await printReceiptESC_POS(characteristic, lines, {
         // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
         cutPaper: true,
-        chunkSize: getReportPrintChunkSize(lines)
+        // ใช้จังหวะพักสั้น ๆ ระหว่างชุดข้อมูล เช่นเดียวกับใบเสร็จ
+        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+        forceWithResponse: false
       });
       removePrintLoadingDialog();
       dialog.remove();

@@ -657,7 +657,7 @@ function openPrinterSettings() {
   };
 }
 
-const PRINTER_WRITE_CHUNK_SIZE = 89;///ความยาว/บ๊อค 90 จะเพี้ยน
+const PRINTER_WRITE_CHUNK_SIZE = 88;///ความยาว/บ๊อค 90 จะเพี้ยน
 const PRINTER_WRITE_BURST_CHUNKS = 60;
 let printerWriteWithoutResponseDelayMs = 0;
 
@@ -671,7 +671,7 @@ async function sendBytes(ch, bytes) {
       ? data => ch.writeValueWithResponse(data)
       : data => ch.writeValue(data);
 
-  // ส่งข้อมูลภาพผ่าน BLE ก้อนละ 89 ไบต์ ตามค่าที่เลือกสำหรับเครื่องพิมพ์นี้
+  // ส่งข้อมูลภาพผ่าน BLE ก้อนละ 88 ไบต์ ตามค่าที่เลือกสำหรับเครื่องพิมพ์นี้
   // ส่งเป็นชุด 60 ก้อนโดยไม่หน่วง เพื่อให้พิมพ์ได้เร็วที่สุด
   for (let i = 0, chunkIndex = 0; i < bytes.length; i += PRINTER_WRITE_CHUNK_SIZE, chunkIndex += 1) {
     try {
@@ -935,8 +935,13 @@ async function printReceiptESC_POS(characteristic, lines) {
     await sendBytes(characteristic, combined);
   }
 
-  await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05, 0x1D, 0x56, 0x42, 0x00]));
-  await sleep(50);
+  // ส่งคำสั่งป้อนกระดาษและตัดแยกต่างหากหลังส่งภาพเสร็จ
+  // เพื่อให้เครื่องพิมพ์ประมวลผลใบก่อนหน้าเสร็จก่อน โดยเฉพาะการส่งผ่าน BLE
+  await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05]));
+  await sleep(180);
+  // GS V 0 คือ Full cut ที่รองรับกว้างกว่า GS V B n ในเครื่องพิมพ์ ESC/POS รุ่นเก่า
+  await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]));
+  await sleep(220);
 }
 
 async function runPrint(data, billNo) {
@@ -944,10 +949,15 @@ async function runPrint(data, billNo) {
   const characteristic = await connectBluetoothPrinter();
   const receipts = createReceiptLines(data, billNo);
 
-  if (getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH) {
-    await printReceiptESC_POS(characteristic, receipts.original);
+  const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
+    ? [receipts.original, receipts.copy]
+    : [receipts.copy];
+
+  // แต่ละ block จบด้วยคำสั่งตัดกระดาษหนึ่งครั้ง:
+  // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
+  for (const receiptLines of receiptBlocks) {
+    await printReceiptESC_POS(characteristic, receiptLines);
   }
-  await printReceiptESC_POS(characteristic, receipts.copy);
 }
 
 async function printTestReceipt() {
@@ -971,10 +981,12 @@ async function printTestReceipt() {
       allLimit: 1
     };
     const receipt = createReceiptLines(testData, `TEST-${Date.now().toString().slice(-6)}`);
-    if (getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH) {
-      await printReceiptESC_POS(characteristic, receipt.original);
+    const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
+      ? [receipt.original, receipt.copy]
+      : [receipt.copy];
+    for (const receiptLines of receiptBlocks) {
+      await printReceiptESC_POS(characteristic, receiptLines);
     }
-    await printReceiptESC_POS(characteristic, receipt.copy);
     showToast('พิมพ์ใบเสร็จทดสอบเรียบร้อยแล้ว');
   } catch (error) {
     console.error('Test print failed:', error);

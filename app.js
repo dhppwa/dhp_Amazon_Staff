@@ -647,20 +647,8 @@ async function isBluetoothAdapterAvailable() {
 }
 
 async function initializePrinterOnMainScreen() {
-  const saved = getSavedPrinter();
-  if (!saved) {
-    showAppDialog('ยังไม่ได้ตั้งค่าเครื่องพิมพ์ ต้องการใช้งานแบบไม่พิมพ์หรือไม่', {
-      title: 'เครื่องพิมพ์',
-      actionLabel: 'ตกลง',
-      cancelLabel: 'ปิด',
-      onAction: () => {
-        sessionWithoutPrinter = true;
-      },
-      onCancel: closeStaffApplication
-    });
-    return;
-  }
-
+  // ตรวจ Bluetooth ก่อนตรวจการตั้งค่าเครื่องพิมพ์เสมอ เพื่อแจ้งผู้ใช้ได้ตั้งแต่เข้าหน้าแรก
+  // getAvailability() มีใน Chromium/Android เท่านั้น; iOS Safari ไม่มี API สำหรับอ่านสถานะนี้
   if (await isBluetoothAdapterAvailable() === false) {
     showAppDialog('Bluetooth ปิดอยู่ กรุณาเปิด Bluetooth และเปิดเครื่องพิมพ์ แล้วกดตรวจสอบอีกครั้ง', {
       title: 'เปิด Bluetooth',
@@ -671,6 +659,20 @@ async function initializePrinterOnMainScreen() {
         sessionWithoutPrinter = true;
         scanWithoutPrinter = true;
       }
+    });
+    return;
+  }
+
+  const saved = getSavedPrinter();
+  if (!saved) {
+    showAppDialog('ยังไม่ได้ตั้งค่าเครื่องพิมพ์ ต้องการใช้งานแบบไม่พิมพ์หรือไม่', {
+      title: 'เครื่องพิมพ์',
+      actionLabel: 'ตกลง',
+      cancelLabel: 'ปิด',
+      onAction: () => {
+        sessionWithoutPrinter = true;
+      },
+      onCancel: closeStaffApplication
     });
     return;
   }

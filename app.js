@@ -1547,6 +1547,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     try {
       if (!supportsBluetoothPrinting()) {
         window.print();
+        dialog.remove();
         return;
       }
       if (!getSavedPrinter()) throw new Error('ยังไม่ได้ตั้งค่าเครื่องพิมพ์ กรุณาตั้งค่าเครื่องพิมพ์ก่อน');
@@ -1559,6 +1560,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
         chunkSize: getReportPrintChunkSize(lines)
       });
       removePrintLoadingDialog();
+      dialog.remove();
       showToast('พิมพ์รายงานการขายเรียบร้อยแล้ว');
     } catch (error) {
       removePrintLoadingDialog();

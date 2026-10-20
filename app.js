@@ -821,7 +821,7 @@ function renderReceiptPreviewCards(data) {
   </div>`;
 }
 
-async function printReceiptESC_POS(characteristic, lines) {
+async function printReceiptESC_POS(characteristic, lines, { cutPaper = true } = {}) {
   if (document.fonts) await document.fonts.ready;
 
   const width = PRINT_WIDTH_DOTS, FONT_PX = 24, LINE_H = 34, PAD = 4;
@@ -935,13 +935,15 @@ async function printReceiptESC_POS(characteristic, lines) {
     await sendBytes(characteristic, combined);
   }
 
-  // ส่งคำสั่งป้อนกระดาษและตัดแยกต่างหากหลังส่งภาพเสร็จ
-  // เพื่อให้เครื่องพิมพ์ประมวลผลใบก่อนหน้าเสร็จก่อน โดยเฉพาะการส่งผ่าน BLE
-  await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05]));
-  await sleep(180);
-  // GS V 0 คือ Full cut ที่รองรับกว้างกว่า GS V B n ในเครื่องพิมพ์ ESC/POS รุ่นเก่า
-  await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]));
-  await sleep(220);
+  if (cutPaper) {
+    // ส่งคำสั่งป้อนกระดาษและตัดแยกต่างหากหลังส่งภาพเสร็จ
+    // เพื่อให้เครื่องพิมพ์ประมวลผลใบก่อนหน้าเสร็จก่อน โดยเฉพาะการส่งผ่าน BLE
+    await sendBytes(characteristic, new Uint8Array([0x1B, 0x32, 0x1B, 0x64, 0x05]));
+    await sleep(180);
+    // GS V 0 คือ Full cut ที่รองรับกว้างกว่า GS V B n ในเครื่องพิมพ์ ESC/POS รุ่นเก่า
+    await sendBytes(characteristic, new Uint8Array([0x1D, 0x56, 0x00]));
+    await sleep(220);
+  }
 }
 
 async function runPrint(data, billNo) {
@@ -1535,7 +1537,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       await ensurePrinterReadyFromUserAction();
       showPrintLoadingDialog('กำลังพิมพ์รายงานการขาย...');
       const characteristic = await connectBluetoothPrinter();
-      await printReceiptESC_POS(characteristic, lines);
+      await printReceiptESC_POS(characteristic, lines, { cutPaper: false });
       removePrintLoadingDialog();
       showToast('พิมพ์รายงานการขายเรียบร้อยแล้ว');
     } catch (error) {

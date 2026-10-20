@@ -662,8 +662,14 @@ const PRINTER_WRITE_CHUNK_SIZE = 85;///ความยาว/บ๊อค 90 จ
 const RECEIPT_WRITE_CHUNK_SIZE = 80;
 // ให้เครื่องพิมพ์เคลียร์บัฟเฟอร์และตัดใบแรกเสร็จก่อนส่งใบร้านค้า
 const RECEIPT_COPY_DELAY_MS = 700;
+const PRINTER_BUFFER_CLEAR_DELAY_MS = 700;
 const PRINTER_WRITE_BURST_CHUNKS = 60;
 let printerWriteWithoutResponseDelayMs = 0;
+
+async function waitForPrinterBufferClear() {
+  // รอให้เครื่องพิมพ์จัดการข้อมูลที่ค้างจากงานก่อนหน้า ก่อนเริ่มงานใหม่
+  await sleep(PRINTER_BUFFER_CLEAR_DELAY_MS);
+}
 
 function getReportPrintChunkSize(lines) {
   // รายงานยาวมีข้อมูลภาพมากและใช้เวลาส่งต่อเนื่องนานกว่า จึงลดขนาดก้อนเพื่อกันข้อมูลตกหล่น
@@ -961,6 +967,7 @@ async function printReceiptESC_POS(characteristic, lines, { cutPaper = true, chu
 async function runPrint(data, billNo) {
   // ใช้เฉพาะเครื่องที่ตั้งค่าไว้ และไม่เปิดตัวเลือก Bluetooth ระหว่างการพิมพ์
   const characteristic = await connectBluetoothPrinter();
+  await waitForPrinterBufferClear();
   const receipts = createReceiptLines(data, billNo);
 
   const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
@@ -987,6 +994,7 @@ async function printTestReceipt() {
     await ensurePrinterReadyFromUserAction();
     showPrintLoadingDialog('กำลังตรวจสอบและส่งใบเสร็จทดสอบ...');
     const characteristic = await connectBluetoothPrinter();
+    await waitForPrinterBufferClear();
     const testData = {
       name: 'ทดสอบระบบ',
       phone: '-',
@@ -1554,6 +1562,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
       await ensurePrinterReadyFromUserAction();
       showPrintLoadingDialog('กำลังพิมพ์รายงานการขาย...');
       const characteristic = await connectBluetoothPrinter();
+      await waitForPrinterBufferClear();
       await printReceiptESC_POS(characteristic, lines, {
         // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
         cutPaper: true,

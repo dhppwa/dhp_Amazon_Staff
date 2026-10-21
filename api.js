@@ -113,6 +113,15 @@ const PRODUCT_MAP = {
 };
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
+const getCustomAmountProduct = productId => {
+  const match = String(productId || '').match(/^C-(\d+)$/i);
+  if (!match) return null;
+  const price = Number(match[1]) / 100;
+  return Number.isFinite(price) && price > 0
+    ? { name: 'อาหาร / เครื่องดื่ม', detail: `จำนวนเงิน ${price.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} บาท`, image: null, color: 'custom', price, isCustomAmount: true }
+    : null;
+};
+const getProductDefinition = productId => PRODUCT_MAP[productId] || getCustomAmountProduct(productId);
 const getVisibleProductName = (storedName, product) => {
   const name = cleanString(storedName);
   if (!name || /^สินค้า\s*รหัส\s*/i.test(name)) return product?.name || 'รายการสินค้า';
@@ -142,7 +151,7 @@ window.staffApi = {
     const { data, error } = await getSupabase()
       .from('Cafe_Amazon_Promosion_House')
       .select('ID')
-      .eq('Access_Level', 1)
+      .eq('Access_Level', 2)
       .limit(1);
 
     if (error) throw new Error(`ตรวจสอบผู้ดูแลระบบไม่สำเร็จ: ${error.message}`);
@@ -168,7 +177,7 @@ window.staffApi = {
       .eq(item.column, item.value)
       .eq('LoginType', item.loginType)
       .eq('PassWord', pass)
-      .eq('Access_Level', 1)
+      .eq('Access_Level', 2)
       .maybeSingle()));
     const failedResult = results.find(result => result.error);
     if (failedResult) throw new Error(`ตรวจสอบสิทธิ์ไม่สำเร็จ: ${failedResult.error.message}`);
@@ -294,7 +303,7 @@ async generateBillNo() {
   }
 
   const productIdStr = data.Product_ID != null ? normalizeProductId(data.Product_ID) : null;
-  const product = productIdStr ? PRODUCT_MAP[productIdStr] : null;
+  const product = productIdStr ? getProductDefinition(productIdStr) : null;
   const productName = product?.name || (productIdStr ? 'รายการสินค้า' : 'ไม่ได้เลือกสินค้า');
   const periodUsed = await getPeriodUsageCount(data.ID, data.LimitType);
 
@@ -320,6 +329,7 @@ async generateBillNo() {
     productName: productName,
     productImage: product?.image || null,
     productPrice: Number(product?.price || 0),
+    isCustomAmount: Boolean(product?.isCustomAmount),
     discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0)))
   };
   },
@@ -588,8 +598,11 @@ async getHistory(userPhone) {
       throw new Error('ส่วนลดต้องเป็นตัวเลขตั้งแต่ 0 ถึง 100 เปอร์เซ็นต์');
     }
 
-    const accessLevelValue = Number(payload.accessLevel) === 1 ? 1 : 0;
-    if (accessLevelValue === 0) {
+    const accessLevelValue = [0, 1, 2, 3].includes(Number(payload.accessLevel))
+      ? Number(payload.accessLevel)
+      : 0;
+    const isNonCustomer = [2, 3].includes(accessLevelValue);
+    if (!isNonCustomer) {
       const dayLimit = Number(payload.quotaPerDay ?? payload.Day_Limit);
       const usedCount = Number(payload.usedCount);
       const allLimit = Number(payload.allLimit);
@@ -644,7 +657,7 @@ async getHistory(userPhone) {
       if (duplicateEmail) throw new Error('Email นี้มีผู้ใช้งานแล้ว กรุณาใช้ Email อื่น');
     }
 
-    const dayLimitValue = accessLevelValue === 1 ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
+    const dayLimitValue = isNonCustomer ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
 
     const recordData = {
       Name: cleanName,
@@ -657,9 +670,9 @@ async getHistory(userPhone) {
       Day_Limit: dayLimitValue,  // ✅ บันทึกตรงตามค่าที่กรอก (หรือ quotaPerDay)
       Access_Level: accessLevelValue,
       IsUse: payload.id ? Boolean(payload.isUse) : false,
-      All_Use: accessLevelValue === 1 ? 0 : (payload.usedCount ?? 0),
-      All_Limit: accessLevelValue === 1 || limitAllValue ? 0 : (payload.allLimit ?? 10),
-      LimitAll: limitAllValue,
+      All_Use: isNonCustomer ? 0 : (payload.usedCount ?? 0),
+      All_Limit: isNonCustomer || limitAllValue ? 0 : (payload.allLimit ?? 10),
+      LimitAll: isNonCustomer ? false : limitAllValue,
       LimitType: limitTypeValue,
       Discount: discountValue,
       UpdateDate: new Date().toISOString()

@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS Cafe_Amazon_Promosion_House (
   Confirm_Coupon INTEGER NOT NULL DEFAULT 0,
   Coupon_No TEXT,
   Product_ID TEXT,
+  -- 0=ผู้ใช้งานทั่วไป, 1=VIP, 2=แอดมิน, 3=ทดสอบระบบ
   Access_Level INTEGER NOT NULL DEFAULT 0,
   Username TEXT,
   LoginType INTEGER NOT NULL DEFAULT 0,

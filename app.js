@@ -865,14 +865,15 @@ function createReceiptLines(data, billNo) {
   const displayName = formatCustomerName(data.name);
   const detailText = `${data.address || '-'}${data.project && data.project !== '-' ? ` ${data.project}` : ''}`;
   const usage = getReceiptUsageSummary(data);
+  const isCustomAmountProduct = Boolean(data.isCustomAmount) || /^C-\d+$/i.test(String(data.productId || ''));
 
   const buildBlock = (isMerchantCopy = false) => [
     {
-      text: 'D House x Café Amazon',
+      text: 'D Coupon',
       align: isMerchantCopy ? 'left' : 'center',
       bold: true,
       isReceiptHeader: true,
-      headerDot: isMerchantCopy,
+      headerDot: false,
       cornerText: isMerchantCopy ? '(ร้านค้าเก็บ)' : ''
     },
     { 
@@ -885,7 +886,7 @@ function createReceiptLines(data, billNo) {
       leftText: `${displayName}`, 
       rightText: `${maskPhoneNumber(data.phone)}`
     },
-    { text: '1 สิทธิ์ (ใช้สิทธิ์ฟรี)' },
+    ...(isCustomAmountProduct ? [] : [{ text: '1 สิทธิ์ (ใช้สิทธิ์ฟรี)' }]),
     {
       leftText: `${data.productName} 1 แก้ว`,
       rightText: isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE',
@@ -894,10 +895,10 @@ function createReceiptLines(data, billNo) {
     },
     ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%`, rightBold: true }] : []),
     ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
-    {
+    ...(isCustomAmountProduct ? [] : [{
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
       rightText: `คงเหลือ: ${usage.remainingText}`
-    },
+    }]),
     { text: 'ขอบคุณที่ใช้บริการ', align: 'center' }
   ];
 
@@ -1361,7 +1362,7 @@ const PRODUCT_IMAGE_PATHS = {
   '2': 'public/assets/image/espresso.webp',
   '3': 'public/assets/image/tea-with-milk.webp'
 };
-const DEFAULT_PRODUCT_IMAGE_PATH = 'public/assets/image/icon-main.png';
+const DEFAULT_PRODUCT_IMAGE_PATH = 'public/assets/image/icon-main.png?v=5';
 
 function resolveProductImage(productId, productName, providedImage) {
   if (providedImage) {
@@ -1425,7 +1426,7 @@ function renderAirPrintReceipt(data, billNo) {
         <h3>ใบเสร็จรับสิทธิ์</h3>
       </div>
       <main id="airprint-receipt" class="airprint-receipt">
-        <h1 style="text-align:${isMerchantOnly ? 'left' : 'center'};">D House x Café Amazon${isMerchantOnly ? ' <span style="font-size:.65em; vertical-align:middle;">●</span>' : ''}</h1>
+        <h1 style="text-align:${isMerchantOnly ? 'left' : 'center'};">D Coupon</h1>
         ${isMerchantOnly ? '<p style="margin-top:4px; text-align:right; font-weight:400; line-height:1.5;">(ร้านค้าเก็บ)</p>' : ''}
         <p>ใบเสร็จรับสิทธิ์คูปอง</p>
         <hr>
@@ -1433,12 +1434,11 @@ function renderAirPrintReceipt(data, billNo) {
         <p class="airprint-row"><span>เลขที่บิล: ${esc(billNo)}</span><span>${esc(data.address)}</span></p>
         <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
         <hr>
-        <p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>
+        ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : '<p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>'}
         <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
         ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
-        <p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p>
-        <p>คงเหลือ: ${esc(usage.remainingText)}</p>
+        ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
         <hr>
         <p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>
@@ -1637,7 +1637,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   const money = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const total = bills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
   const lines = [
-    { text: 'D House x Café Amazon', align: 'center', bold: true },
+    { text: 'D Coupon', align: 'center', bold: true },
     { text: mode === 'summary' ? 'รายงานการขายสรุป' : 'รายงานการขาย', align: 'center', bold: true },
     { text: `${formatReportDate(startDate)} - ${formatReportDate(endDate)}`, align: 'center', fontSize: 18 }
   ];
@@ -1899,6 +1899,12 @@ async function processPhoneQuery(phone, scannedProductId = null, expiresAt = nul
     const message = String(err?.message || '');
     if (message.includes('QR_PRODUCT_NOT_FOUND') || message.includes('ไม่พบข้อมูลสมาชิก') || message.includes('ไม่พบคูปอง') || message.includes('ไม่ได้เลือกสินค้า')) {
       showAppDialog('ไม่พบข้อมูลในระบบ หรือ QR Code ไม่ถูกต้อง กรุณาตรวจสอบแล้วลองอีกครั้ง', { title: 'ไม่พบ QR Code' });
+    } else if (message.includes('คูปองหมดอายุ')) {
+      showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', {
+        title: 'คูปองหมดอายุ',
+        actionLabel: 'สแกน QR ใหม่',
+        onAction: () => startScanner()
+      });
     } else {
       showAppDialog('เกิดข้อผิดพลาด: ' + message, { title: 'สแกน QR ไม่สำเร็จ' });
     }
@@ -1909,6 +1915,7 @@ async function processPhoneQuery(phone, scannedProductId = null, expiresAt = nul
 function renderClientDetailPage(data) {
   const displayName = formatCustomerName(data.name);
   const usage = getReceiptUsageSummary(data);
+  const isCustomAmountProduct = Boolean(data.isCustomAmount) || /^C-\d+$/i.test(String(data.productId || ''));
 
   const hasCouponOrProduct = Boolean(
     data.productId && 
@@ -1933,21 +1940,21 @@ function renderClientDetailPage(data) {
           <div style="display:flex; flex-direction:column; gap:0.16rem; font-size:0.88rem; line-height:1.32; color:#334155;">
             <p style="margin:0;"><strong>ชื่อ:</strong> ${esc(displayName)}</p>
             <p style="margin:0;"><strong>เบอร์โทร:</strong> ${esc(maskPhoneNumber(data.phone))}</p>
-            <p style="margin:0;"><strong>รายละเอียด / บ้านเลขที่:</strong> ${esc(data.address)}</p>
-            <p style="margin:0;"><strong>หมายเหตุ:</strong> ${esc(data.project || '-')}</p>
+            <p style="margin:0;">${esc(data.address)}</p>
+            <p style="margin:0;">${esc(data.project || '-')}</p>
             <p style="margin:0;"><strong>คูปอง:</strong> <span style="color:#059669; font-weight:bold;">${esc(data.couponNo || '-')}</span></p>
-            <p style="margin:0;"><strong>สินค้า:</strong> <span style="color:#0284c7; font-weight:bold;">${esc(data.productName)}</span></p>
-            <p style="margin:0;"><strong>ส่วนลด:</strong> <span style="color:#dc2626; font-weight:bold;">${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</span></p>
           </div>
 
-          <div style="display:flex; justify-content:center; margin:0.55rem 0;">
-            ${renderProductImage(data.productId, data.productName, imgUrl, 130)}
+          <div style="display:flex; flex-direction:column; align-items:center; margin:0.65rem 0 0.45rem; text-align:center;">
+            ${renderProductImage(data.productId, data.productName, imgUrl, 170)}
+            <div style="margin-top:0.45rem; color:#0284c7; font-weight:bold; font-size:1rem; line-height:1.3;">${esc(data.productName)}</div>
+            <div style="margin-top:0.08rem; color:#dc2626; font-weight:bold; font-size:0.9rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>
           </div>
 
-          <div style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.45rem 0 0.2rem; padding:0.5rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
+          ${isCustomAmountProduct ? '' : `<div style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.45rem 0 0.2rem; padding:0.5rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
             <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
             <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
-          </div>
+          </div>`}
           ${/* ซ่อนพรีวิวใบเสร็จหลังสแกน QR แต่ยังคงฟังก์ชันพิมพ์จริงไว้ */ ''}
           
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
@@ -2099,14 +2106,17 @@ async function openHistoryModal(phone, clientData, onClose) {
     }
 
     bodyEl.innerHTML = historyList.map(item => `
-      <div style="border-bottom:1px solid #e2e8f0; padding:0.85rem 0; display:flex; gap:0.75rem; justify-content:space-between; align-items:center;">
-        ${renderProductImage(item.productId, item.productName, item.productImage, 58)}
-        <div style="min-width:0; flex:1;">
-          <div style="font-weight:bold; color:#1e293b; font-size:0.95rem;">${esc(item.productName)}</div>
-          <div style="font-size:0.8rem; color:#64748b; margin-top:2px;">เลขบิล: ${esc(item.billNo)} | คูปอง: ${esc(item.couponNo)}</div>
+      <div style="border-bottom:1px solid #e2e8f0; padding:0.85rem 0; display:flex; gap:0.75rem; align-items:center;">
+        <div style="font-size:0.85rem; color:#059669; font-weight:bold; text-align:left; flex:1 1 0; min-width:0; line-height:1.45;">
+          <div>${esc(item.useDate)}</div>
+          <div style="font-size:0.78rem; color:#64748b; font-weight:600;">เลขที่บิล: ${esc(item.billNo)}</div>
         </div>
-        <div style="font-size:0.85rem; color:#059669; font-weight:bold; text-align:right; flex:0 0 auto;">
-          ${esc(item.useDate)}
+        <div style="min-width:0; flex:1 1 0; font-size:0.8rem; color:#64748b;">
+          <div>คูปอง: ${esc(item.couponNo)}</div>
+        </div>
+        <div style="flex:0 0 76px; display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; min-width:0;">
+          ${renderProductImage(item.productId, item.productName, item.productImage, 58)}
+          <div style="width:100%; font-weight:bold; color:#1e293b; font-size:0.78rem; line-height:1.25; overflow-wrap:anywhere;">${esc(item.productName)}</div>
         </div>
       </div>
     `).join('');
@@ -2119,7 +2129,7 @@ async function openHistoryModal(phone, clientData, onClose) {
 
 // ===== หน้าจัดการตารางสมาชิก House Management (ขยายแสดงผลแบบ Full Screen) =====
 async function openHouseManagementModal() {
-  if (Number(adminSession?.accessLevel) !== 1) {
+  if (Number(adminSession?.accessLevel) !== 2) {
     showToast('กรุณายืนยันสิทธิ์แอดมินก่อนจัดการสมาชิก');
     return;
   }
@@ -2215,7 +2225,7 @@ async function openHouseManagementModal() {
 
 // ===== หน้าฟอร์ม เพิ่ม / แก้ไข สมาชิก (ขยายแสดงผลแบบ Full Screen) =====
 function openHouseRecordModal(title, isEdit = false, record = null) {
-  const needsFirstAdmin = !currentHouseDataList.some(item => Number(item.accessLevel) === 1);
+  const needsFirstAdmin = !currentHouseDataList.some(item => Number(item.accessLevel) === 2);
   const loginTypeValue = [0, 1, 2].includes(Number(record?.loginType)) ? Number(record.loginType) : 0;
   const modalHtml = `
     <div id="house-record-modal" class="staff-page">
@@ -2313,7 +2323,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะผู้ใช้งาน</label>
               <select id="h-field-access-level" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
                 <option value="0" ${Number(record?.accessLevel ?? 0) === 0 ? 'selected' : ''}>ผู้ใช้งานทั่วไป</option>
-                <option value="1" ${Number(record?.accessLevel) === 1 ? 'selected' : ''}>แอดมิน</option>
+                <option value="1" ${Number(record?.accessLevel) === 1 ? 'selected' : ''}>VIP</option>
+                <option value="2" ${Number(record?.accessLevel) === 2 ? 'selected' : ''}>แอดมิน</option>
+                <option value="3" ${Number(record?.accessLevel) === 3 ? 'selected' : ''}>ทดสอบระบบ</option>
               </select>
             </div>
             ${isEdit ? `
@@ -2451,14 +2463,14 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     allLimitField.style.cursor = '';
   };
   const updateRightsFieldsVisibility = () => {
-    const isAdmin = Number(accessLevelField.value) === 1;
-    limitSettings.hidden = isAdmin;
-    limitSettings.style.display = isAdmin ? 'none' : 'block';
-    rightsFields.hidden = isAdmin;
-    rightsFields.style.display = isAdmin ? 'none' : 'flex';
+    const isNonCustomer = [2, 3].includes(Number(accessLevelField.value));
+    limitSettings.hidden = isNonCustomer;
+    limitSettings.style.display = isNonCustomer ? 'none' : 'block';
+    rightsFields.hidden = isNonCustomer;
+    rightsFields.style.display = isNonCustomer ? 'none' : 'flex';
 
     rightsFields.querySelectorAll('input').forEach((input) => {
-      if (isAdmin) {
+      if (isNonCustomer) {
         if (!Object.hasOwn(input.dataset, 'beforeAdmin')) {
           input.dataset.beforeAdmin = input.value;
         }
@@ -2475,7 +2487,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
 
     });
     limitSettings.querySelectorAll('input').forEach((input) => {
-      input.disabled = isAdmin;
+      input.disabled = isNonCustomer;
     });
     updateLimitAllState();
   };
@@ -2516,14 +2528,14 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const loginType = getLoginType();
     const limitType = getLimitType();
     const limitAll = getLimitAll();
-    const isAdmin = accessLevel === 1;
+    const isNonCustomer = [2, 3].includes(accessLevel);
     const quotaInput = document.querySelector('#h-field-quotaPerDay');
     const usedInput = document.querySelector('#h-field-usedCount');
     const allLimitInput = document.querySelector('#h-field-allLimit');
     const discountInput = document.querySelector('#h-field-discount');
-    const quotaVal = isAdmin ? 0 : Number.parseInt(quotaInput.value, 10);
-    const usedCountVal = isAdmin ? 0 : Number.parseInt(usedInput.value, 10);
-    const allLimitVal = isAdmin || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
+    const quotaVal = isNonCustomer ? 0 : Number.parseInt(quotaInput.value, 10);
+    const usedCountVal = isNonCustomer ? 0 : Number.parseInt(usedInput.value, 10);
+    const allLimitVal = isNonCustomer || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
     const discountVal = Number.parseFloat(discountInput.value);
 
     if (!Number.isFinite(discountVal) || discountVal < 0 || discountVal > 100) {
@@ -2543,7 +2555,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       return;
     }
 
-    if (!isAdmin) {
+    if (!isNonCustomer) {
       const inputsToValidate = limitAll ? [quotaInput, usedInput] : [quotaInput, usedInput, allLimitInput];
       const invalidInput = inputsToValidate.find((input) => {
         const value = Number(input.value);
@@ -2627,8 +2639,8 @@ function renderHouseTable(list) {
   tbody.innerHTML = list.map(item => `
     <tr style="border-bottom:1px solid #e2e8f0;">
       <td style="padding:0.75rem; text-align:center;">
-        <span style="display:inline-block; min-width:70px; padding:0.25rem 0.5rem; border-radius:999px; font-size:0.8rem; font-weight:bold; color:#fff; background:${Number(item.accessLevel) === 1 ? '#7c3aed' : '#0284c7'};">
-          ${Number(item.accessLevel) === 1 ? 'แอดมิน' : 'ผู้ใช้'}
+        <span style="display:inline-block; min-width:70px; padding:0.25rem 0.5rem; border-radius:999px; font-size:0.8rem; font-weight:bold; color:#fff; background:${Number(item.accessLevel) === 1 ? '#7c3aed' : Number(item.accessLevel) === 2 ? '#dc2626' : Number(item.accessLevel) === 3 ? '#d97706' : '#0284c7'};">
+          ${Number(item.accessLevel) === 1 ? 'VIP' : Number(item.accessLevel) === 2 ? 'แอดมิน' : Number(item.accessLevel) === 3 ? 'ทดสอบระบบ' : 'ผู้ใช้'}
         </span>
       </td>
       <td style="padding:0.75rem; text-align:center;">
@@ -2721,7 +2733,7 @@ async function openAdminLoginDialog() {
   try {
     const hasAdmin = await window.staffApi.hasAdminUser();
     if (!hasAdmin) {
-      adminSession = { accessLevel: 1, initialSetup: true };
+      adminSession = { accessLevel: 2, initialSetup: true };
       await openHouseManagementModal();
       return;
     }
@@ -2820,7 +2832,7 @@ function renderMainUI() {
     <div class="shell staff-main-shell" style="max-width: 480px; margin: 0 auto; padding: 1rem; font-family: sans-serif; position: relative; min-height: 80vh;">
       <header style="text-align: center; margin-bottom: 1.5rem;">
         <img 
-          src="public/assets/image/icon-192.png" 
+          src="public/assets/image/icon-192.png?v=10" 
           alt="D House X Cafe Amazon Logo" 
           style="width: 80px; height: 80px; object-fit: contain; margin-bottom: 0.5rem; border-radius: 12px;"
         >

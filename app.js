@@ -1902,13 +1902,31 @@ async function processPhoneQuery(phone, scannedProductId = null, expiresAt = nul
     } else if (message.includes('คูปองหมดอายุ')) {
       showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', {
         title: 'คูปองหมดอายุ',
-        actionLabel: 'สแกน QR ใหม่',
-        onAction: () => startScanner()
+        actionLabel: 'ตกลง',
+        onAction: () => restartScannerAfterInvalidCoupon()
       });
     } else {
       showAppDialog('เกิดข้อผิดพลาด: ' + message, { title: 'สแกน QR ไม่สำเร็จ' });
     }
   }
+}
+
+// เมื่อคูปองหมดอายุหรือถูกยกเลิกระหว่างสแกน/ยืนยัน ให้ปิดหน้ายืนยันและกลับไปรอกล้องทันที
+async function restartScannerAfterInvalidCoupon() {
+  try {
+    // ปิดกล้องเดิมให้เสร็จก่อน เพื่อไม่ให้ instance เก่าขวางการเปิดกล้องรอบใหม่
+    if (html5QrCode?.isScanning) await stopScanner();
+  } catch (error) {
+    console.warn('Stop previous scanner before restarting failed:', error);
+  }
+
+  renderMainUI();
+  window.requestAnimationFrame(() => {
+    startScanner({ allowWithoutPrinter: scanWithoutPrinter || sessionWithoutPrinter }).catch(error => {
+      console.error('Restart scanner after invalid coupon failed:', error);
+      showAppDialog('ไม่สามารถเปิดกล้องได้ กรุณากดเปิดกล้องอีกครั้ง', { title: 'เปิดกล้องไม่สำเร็จ' });
+    });
+  });
 }
 
 // ===== หน้าแสดงรายละเอียดสมาชิก (ขยายแสดงผลแบบ Full Screen) =====
@@ -1939,7 +1957,7 @@ function renderClientDetailPage(data) {
         <div style="border:1px solid #e5e7eb; border-radius:12px; padding:0.8rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
           <div style="display:flex; flex-direction:column; gap:0.16rem; font-size:0.88rem; line-height:1.32; color:#334155;">
             <p style="margin:0;"><strong>ชื่อ:</strong> ${esc(displayName)}</p>
-            <p style="margin:0;"><strong>เบอร์โทร:</strong> ${esc(maskPhoneNumber(data.phone))}</p>
+            <p style="margin:0;"><strong>โทร:</strong> ${esc(maskPhoneNumber(data.phone))}</p>
             <p style="margin:0;">${esc(data.address)}</p>
             <p style="margin:0;">${esc(data.project || '-')}</p>
             <p style="margin:0;"><strong>คูปอง:</strong> <span style="color:#059669; font-weight:bold;">${esc(data.couponNo || '-')}</span></p>
@@ -1991,7 +2009,11 @@ function renderClientDetailPage(data) {
     const confirmRedeem = async (withoutPrinting = false) => {
       // ตรวจอีกครั้งก่อนสร้างบิลหรือสั่งพิมพ์ เผื่อคูปองหมดอายุระหว่างเปิดหน้านี้
       if (isCouponExpired(data.couponExpiresAt)) {
-        showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', { title: 'คูปองหมดอายุ' });
+        showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', {
+          title: 'คูปองหมดอายุ',
+          actionLabel: 'ตกลง',
+          onAction: restartScannerAfterInvalidCoupon
+        });
         return;
       }
 
@@ -2057,7 +2079,11 @@ function renderClientDetailPage(data) {
             onAction: renderMainUI
           });
         } else if (String(err.message || '').includes('คูปองหมดอายุ')) {
-          showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', { title: 'คูปองหมดอายุ' });
+          showAppDialog('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่', {
+            title: 'คูปองหมดอายุ',
+            actionLabel: 'ตกลง',
+            onAction: restartScannerAfterInvalidCoupon
+          });
         } else {
           const errorMessage = String(err?.message ?? '').trim()
             || 'ไม่สามารถเชื่อมต่อเครื่องพิมพ์ที่ตั้งค่าไว้ได้ กรุณาเปิดเครื่องพิมพ์แล้วลองอีกครั้ง';
@@ -2241,7 +2267,18 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
           ${!isEdit && needsFirstAdmin ? '<div role="alert" style="margin:1.25rem 1.25rem 0; padding:.85rem; border:1px solid #f59e0b; border-radius:8px; background:#fffbeb; color:#92400e; line-height:1.5; font-size:.9rem;"><strong>ต้องสร้าง User แอดมินก่อน</strong><br>กรุณาเลือก “แอดมิน” ในช่องสถานะผู้ใช้งาน แล้วบันทึกข้อมูล จึงจะออกจากหน้าจัดการสมาชิกได้</div>' : ''}
           <form id="house-record-form" style="padding:1.25rem; display:flex; flex-direction:column; gap:0.8rem;">
             <input type="hidden" id="h-field-id" value="${esc(record?.id || '')}" />
-            
+
+            <div>
+              <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะผู้ใช้งาน</label>
+              <select id="h-field-access-level" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
+                <option value="0" ${Number(record?.accessLevel ?? 0) === 0 ? 'selected' : ''}>ผู้ใช้งานทั่วไป</option>
+                <option value="1" ${Number(record?.accessLevel) === 1 ? 'selected' : ''}>VIP</option>
+                <option value="2" ${Number(record?.accessLevel) === 2 ? 'selected' : ''}>แอดมิน</option>
+                <option value="3" ${Number(record?.accessLevel) === 3 ? 'selected' : ''}>ทดสอบระบบ</option>
+              </select>
+            </div>
+
+            <section aria-label="ข้อมูลสมาชิกและการเข้าสู่ระบบ" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #b7dfc0; border-radius:10px; background:#e8f5e9;">
             <fieldset style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
               <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">เลือกชื่อสำหรับเข้าสู่ระบบ *</legend>
               <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1rem;">
@@ -2274,6 +2311,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">หมายเหตุ</label>
               <input type="text" id="h-field-project" value="${esc(record?.project || '')}" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;" />
             </div>
+            </section>
+
+            <section aria-label="การจำกัดสิทธิ์และส่วนลด" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #ead58c; border-radius:10px; background:#fff7d6;">
             <fieldset id="h-limit-settings" style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
               <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">การจำกัดสิทธิ์ทั้งหมด</legend>
               <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1.25rem;">
@@ -2318,16 +2358,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 <span aria-hidden="true" style="display:flex; align-items:center; padding:0 0.8rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#f1f5f9; color:#475569; font-weight:bold;">%</span>
               </div>
             </div>
+            </section>
 
-            <div>
-              <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะผู้ใช้งาน</label>
-              <select id="h-field-access-level" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem;">
-                <option value="0" ${Number(record?.accessLevel ?? 0) === 0 ? 'selected' : ''}>ผู้ใช้งานทั่วไป</option>
-                <option value="1" ${Number(record?.accessLevel) === 1 ? 'selected' : ''}>VIP</option>
-                <option value="2" ${Number(record?.accessLevel) === 2 ? 'selected' : ''}>แอดมิน</option>
-                <option value="3" ${Number(record?.accessLevel) === 3 ? 'selected' : ''}>ทดสอบระบบ</option>
-              </select>
-            </div>
             ${isEdit ? `
               <div>
                 <label style="font-size:0.85rem; font-weight:bold; color:#475569;">สถานะเข้าใช้งาน</label>
@@ -2443,24 +2475,37 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   };
   const updateLimitAllState = () => {
     const isUnlimited = getLimitAll();
+    const isNonCustomer = [2, 3].includes(Number(accessLevelField.value));
+    const disableUsageLimits = isNonCustomer || isUnlimited;
+    const quotaField = document.querySelector('#h-field-quotaPerDay');
     if (isUnlimited) {
-      if (allLimitField.value !== '0') allLimitField.dataset.beforeUnlimited = allLimitField.value;
+      // ไม่จำกัดต้องไม่คงค่าจำกัดเดิมไว้: บันทึก Day_Limit และ All_Limit เป็น 0
       allLimitField.value = '0';
-      allLimitField.readOnly = true;
-      allLimitField.setAttribute('aria-readonly', 'true');
+      quotaField.value = '0';
+      limitTypeField.value = '0';
+      limitTypeLabel.textContent = 'วัน';
       allLimitField.style.background = '#f1f5f9';
       allLimitField.style.color = '#475569';
       allLimitField.style.cursor = 'not-allowed';
-      return;
+    } else {
+      allLimitField.style.background = '#fff';
+      allLimitField.style.color = '';
+      allLimitField.style.cursor = '';
     }
 
-    allLimitField.readOnly = false;
-    allLimitField.removeAttribute('aria-readonly');
-    if (allLimitField.value === '0') allLimitField.value = allLimitField.dataset.beforeUnlimited || '';
-    delete allLimitField.dataset.beforeUnlimited;
-    allLimitField.style.background = '#fff';
-    allLimitField.style.color = '';
-    allLimitField.style.cursor = '';
+    // โหมดไม่จำกัด: ไม่มีจำนวนสิทธิ์ต่อวัน/เดือน/ปี และใช้ได้กี่ครั้งก็ได้
+    allLimitField.disabled = disableUsageLimits;
+    allLimitField.setAttribute('aria-disabled', String(disableUsageLimits));
+    rightsFields.querySelectorAll('input').forEach(input => {
+      input.disabled = disableUsageLimits;
+    });
+    limitTypeToggle.disabled = disableUsageLimits;
+    limitTypeMenu.querySelectorAll('button').forEach(button => {
+      button.disabled = disableUsageLimits;
+    });
+    rightsFields.style.opacity = disableUsageLimits ? '.55' : '1';
+    rightsFields.style.pointerEvents = disableUsageLimits ? 'none' : '';
+    if (disableUsageLimits) closeLimitTypeMenu();
   };
   const updateRightsFieldsVisibility = () => {
     const isNonCustomer = [2, 3].includes(Number(accessLevelField.value));
@@ -2533,7 +2578,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const usedInput = document.querySelector('#h-field-usedCount');
     const allLimitInput = document.querySelector('#h-field-allLimit');
     const discountInput = document.querySelector('#h-field-discount');
-    const quotaVal = isNonCustomer ? 0 : Number.parseInt(quotaInput.value, 10);
+    const quotaVal = isNonCustomer || limitAll ? 0 : Number.parseInt(quotaInput.value, 10);
     const usedCountVal = isNonCustomer ? 0 : Number.parseInt(usedInput.value, 10);
     const allLimitVal = isNonCustomer || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
     const discountVal = Number.parseFloat(discountInput.value);
@@ -2555,17 +2600,15 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       return;
     }
 
-    if (!isNonCustomer) {
-      const inputsToValidate = limitAll ? [quotaInput, usedInput] : [quotaInput, usedInput, allLimitInput];
+    if (!isNonCustomer && !limitAll) {
+      const inputsToValidate = [quotaInput, usedInput, allLimitInput];
       const invalidInput = inputsToValidate.find((input) => {
         const value = Number(input.value);
         if (input.value.trim() === '' || !Number.isInteger(value)) return true;
         return input === usedInput ? value < 0 : value <= 0;
       });
       if (invalidInput) {
-        await showAppDialog(limitAll
-          ? 'กรุณากรอกสิทธิ์ตามช่วงเวลาให้มากกว่า 0 และสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0'
-          : 'กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
+        await showAppDialog('กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
           title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
         });
         invalidInput.focus();
@@ -2652,9 +2695,9 @@ function renderHouseTable(list) {
       <td style="padding:0.75rem;">${esc(item.phone || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.address || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.project || '-')}</td>
-      <td style="padding:0.75rem; text-align:center;">${item.quotaPerDay ?? 1}</td>
+      <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.quotaPerDay ?? 1)}</td>
       <td style="padding:0.75rem; text-align:center;">${item.usedCount ?? 0}</td>
-      <td style="padding:0.75rem; text-align:center;">${item.allLimit ?? 10}</td>
+      <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.allLimit ?? 10)}</td>
       <td style="padding:0.75rem; text-align:center;">
         <div style="display:flex; gap:0.4rem; justify-content:center; align-items:center; flex-wrap:wrap;">
           <button type="button" data-history-id="${esc(item.id)}" style="width:90px; min-width:90px; max-width:90px; height:36px; flex:0 0 90px; box-sizing:border-box; appearance:none; -webkit-appearance:none; padding:0.4rem; background:#2563eb; color:#fff; border:none; border-radius:4px; cursor:pointer; font-size:0.8rem; font-weight:bold; white-space:nowrap;">📜 ประวัติ</button>

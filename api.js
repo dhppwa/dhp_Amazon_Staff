@@ -602,18 +602,18 @@ async getHistory(userPhone) {
       ? Number(payload.accessLevel)
       : 0;
     const isNonCustomer = [2, 3].includes(accessLevelValue);
-    if (!isNonCustomer) {
+    // ไม่จำกัดสิทธิ์ = ใช้ได้ไม่จำกัดครั้ง จึงไม่ต้องกำหนดโควตาต่อวัน/เดือน/ปี
+    // และไม่ต้องตรวจค่า Day_Limit หรือ All_Limit
+    if (!isNonCustomer && !limitAllValue) {
       const dayLimit = Number(payload.quotaPerDay ?? payload.Day_Limit);
       const usedCount = Number(payload.usedCount);
       const allLimit = Number(payload.allLimit);
       if (
         !Number.isInteger(dayLimit) || dayLimit <= 0 ||
         !Number.isInteger(usedCount) || usedCount < 0 ||
-        (!limitAllValue && (!Number.isInteger(allLimit) || allLimit <= 0))
+        (!Number.isInteger(allLimit) || allLimit <= 0)
       ) {
-        throw new Error(limitAllValue
-          ? 'สิทธิ์ตามช่วงเวลาต้องมากกว่า 0 และสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0'
-          : 'สิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0');
+        throw new Error('สิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0');
       }
     }
 
@@ -657,7 +657,7 @@ async getHistory(userPhone) {
       if (duplicateEmail) throw new Error('Email นี้มีผู้ใช้งานแล้ว กรุณาใช้ Email อื่น');
     }
 
-    const dayLimitValue = isNonCustomer ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
+    const dayLimitValue = isNonCustomer || limitAllValue ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
 
     const recordData = {
       Name: cleanName,

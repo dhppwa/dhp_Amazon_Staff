@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'amazon-staff-';
-const CACHE_NAME = `${CACHE_PREFIX}v209`;
+const CACHE_NAME = `${CACHE_PREFIX}v210`;
 
 self.addEventListener('install', event => {
   event.waitUntil(self.skipWaiting());

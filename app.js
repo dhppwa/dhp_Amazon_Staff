@@ -2394,8 +2394,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               </div>
             </fieldset>
 
-            <div id="h-fields-rights" style="display:flex; gap:0.5rem;">
-              <div style="flex:1.35;">
+            <div id="h-fields-rights" style="display:grid; grid-template-columns:minmax(0, 1fr) 84px; align-items:start; gap:0.5rem; width:100%;">
+              <div style="min-width:0;">
                 <label style="font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
                 <div style="display:flex; align-items:stretch;">
                   <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
@@ -2412,9 +2412,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                   </div>
                 </div>
               </div>
-              <div style="flex:0 0 108px;">
+              <div style="flex:0 0 84px; min-width:84px;">
                 <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ที่ใช้แล้ว</label>
-                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; background:#f1f5f9; color:#475569; cursor:not-allowed;" />
+                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; background:#f1f5f9; color:#475569; cursor:not-allowed; appearance:textfield; -moz-appearance:textfield; -webkit-appearance:none;" />
               </div>
             </div>
 

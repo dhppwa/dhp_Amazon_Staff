@@ -227,6 +227,15 @@ body {
   touch-action: pan-y;
 }
 
+/* หัวตารางติดด้านบนขณะเลื่อน เหมือนหน้าประวัติของ Client */
+#history-modal #history-list-body thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f3f4f6;
+  box-shadow: 0 2px 0 #d1d5db;
+}
+
 /* หน้าแรก Staff: เว้นจากแถบสถานะ/รอยบาก เพื่อไม่ให้โลโก้ถูกทับ */
 .staff-main-shell {
   padding-top: calc(24px + env(safe-area-inset-top, 0px)) !important;

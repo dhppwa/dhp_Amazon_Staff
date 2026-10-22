@@ -330,7 +330,8 @@ async generateBillNo() {
     productImage: product?.image || null,
     productPrice: Number(product?.price || 0),
     isCustomAmount: Boolean(product?.isCustomAmount),
-    discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0)))
+    // รายการใส่จำนวนเงิน (C-<สตางค์>) ใช้ยอดที่กรอกเต็มจำนวนเสมอ
+    discount: product?.isCustomAmount ? 0 : Math.min(100, Math.max(0, Number(data.Discount ?? 0)))
   };
   },
 
@@ -443,7 +444,10 @@ async getHistory(userPhone) {
           ItemDetail: userData.productName,
            // ราคาเก็บเป็นราคาสินค้าจริง ไม่หักเปอร์เซ็นต์ส่วนลดของสมาชิก
            Price: Number(userData.productPrice || 0),
-           Discount: Math.min(100, Math.max(0, Number(userData.discount ?? 0))),
+           // ห้ามนำส่วนลดสมาชิกมาใช้กับรายการอาหาร / เครื่องดื่มแบบระบุยอด
+           Discount: userData.isCustomAmount || /^C-\d+$/i.test(String(rawProductId))
+             ? 0
+             : Math.min(100, Math.max(0, Number(userData.discount ?? 0))),
           Change: 0.00,
           InsertDate: new Date().toISOString(),
           IsUse: true,
@@ -550,7 +554,8 @@ async getHistory(userPhone) {
       const product = PRODUCT_MAP[productId];
       const member = memberMap.get(String(bill.Cafe_Amazon_PK)) || {};
       const productPrice = Number(bill.Price ?? product?.price ?? 0);
-      const discount = Math.min(100, Math.max(0, Number(bill.Discount ?? 0)));
+      const isCustomAmount = Boolean(product?.isCustomAmount) || /^C-\d+$/i.test(String(productId));
+      const discount = isCustomAmount ? 0 : Math.min(100, Math.max(0, Number(bill.Discount ?? 0)));
       return {
         ...bill,
         productId,
@@ -558,6 +563,7 @@ async getHistory(userPhone) {
         productImage: product?.image || null,
         productPrice,
         discount,
+        isCustomAmount,
         netPrice: productPrice * (1 - discount / 100),
         memberName: member.Name || '-',
         memberPhone: member.Phone_No || '-',

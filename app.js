@@ -893,7 +893,7 @@ function createReceiptLines(data, billNo) {
       leftBold: true,
       rightBold: false
     },
-    ...(isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%`, rightBold: true }] : []),
+    ...(!isCustomAmountProduct && isMerchantCopy ? [{ leftText: 'dis', rightText: `${formatDiscountPercent(data.discount)}%`, rightBold: true }] : []),
     ...(isMerchantCopy ? [{ leftText: 'ราคาสุทธิ', rightText: `${formatReceiptPrice(getNetReceiptPrice(data))} บาท`, bold: true }] : []),
     ...(isCustomAmountProduct ? [] : [{
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
@@ -1443,6 +1443,7 @@ function renderAirPrintReceipt(data, billNo) {
   const printedAt = new Date().toLocaleString('th-TH');
   const usage = getReceiptUsageSummary(data);
   const isMerchantOnly = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY;
+  const isCustomAmountProduct = Boolean(data.isCustomAmount) || /^C-\d+$/i.test(String(data.productId || ''));
   app.innerHTML = `
     <div class="staff-page airprint-page">
       <div class="staff-page-header">
@@ -1460,7 +1461,7 @@ function renderAirPrintReceipt(data, billNo) {
         <hr>
         ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : '<p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>'}
         <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
-        ${isMerchantOnly ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
+        ${isMerchantOnly && !isCustomAmountProduct ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
@@ -1596,7 +1597,7 @@ function showSalesReportDetail(bill) {
           <div><strong>หมายเหตุ:</strong> ${esc(bill.memberRemark || '-')}</div>
           <div><strong>สินค้า:</strong> ${esc(bill.productName || '-')}</div>
           <div><strong>ราคา:</strong> ฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
-          <div><strong>ส่วนลด:</strong> ${formatDiscountPercent(bill.discount)}%</div>
+          ${bill.isCustomAmount ? '' : `<div><strong>ส่วนลด:</strong> ${formatDiscountPercent(bill.discount)}%</div>`}
           <div><strong>ราคาสุทธิ:</strong> ฿${netPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
           <div><strong>ใช้สิทธิ์แล้ว:</strong> ${Number(bill.memberUsedCount || 0)} / ${Number(bill.memberAllLimit || 0)} ครั้ง</div>
           <div><strong>จำนวนสิทธิ์ต่อวัน:</strong> ${Number(bill.memberDayLimit || 1)} ครั้ง</div>
@@ -1613,6 +1614,7 @@ function getSalesBillNetPrice(bill) {
   const savedNetPrice = Number(bill?.netPrice);
   if (Number.isFinite(savedNetPrice)) return Math.max(0, savedNetPrice);
   const price = Math.max(0, Number(bill?.productPrice ?? bill?.Price ?? 0));
+  if (Boolean(bill?.isCustomAmount) || /^C-\d+$/i.test(String(bill?.productId ?? bill?.Product_Type ?? ''))) return price;
   const discount = Math.min(100, Math.max(0, Number(bill?.discount ?? bill?.Discount ?? 0)));
   return price * (1 - discount / 100);
 }
@@ -1621,7 +1623,8 @@ function summarizeSalesReportBills(bills) {
   const summaryMap = new Map();
   bills.forEach(bill => {
     const productKey = String(bill.productId || bill.Product_Type || bill.productName || '-');
-    const discount = Math.min(100, Math.max(0, Number(bill.discount ?? bill.Discount ?? 0)));
+    const isCustomAmount = Boolean(bill.isCustomAmount) || /^C-\d+$/i.test(String(bill.productId ?? bill.Product_Type ?? ''));
+    const discount = isCustomAmount ? 0 : Math.min(100, Math.max(0, Number(bill.discount ?? bill.Discount ?? 0)));
     const key = `${productKey}::${discount}`;
     const current = summaryMap.get(key) || {
       productId: bill.productId || bill.Product_Type,
@@ -1629,6 +1632,7 @@ function summarizeSalesReportBills(bills) {
       productImage: bill.productImage,
       productPrice: Math.max(0, Number(bill.productPrice ?? bill.Price ?? 0)),
       discount,
+      isCustomAmount,
       quantity: 0,
       total: 0
     };
@@ -1671,7 +1675,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
       lines.push({ inlineLeftText: group.productName, inlineRightText: `\u00a0฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
       group.discounts.forEach(item => {
         const discountedUnitPrice = item.productPrice * (1 - item.discount / 100);
-        lines.push({ leftText: `dis ${formatDiscountPercent(item.discount)}% ฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์`, rightText: `฿${money(item.total)}`, rightBold: false });
+        lines.push({ leftText: item.isCustomAmount ? `฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์` : `dis ${formatDiscountPercent(item.discount)}% ฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์`, rightText: `฿${money(item.total)}`, rightBold: false });
       });
     });
   } else {
@@ -1683,7 +1687,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
       lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
       lines.push({ text: bill.productName || '-', bold: true });
       lines.push({ leftText: 'ราคา', rightText: `฿${money(bill.productPrice)}` });
-      lines.push({ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(bill.discount)}%` });
+      if (!bill.isCustomAmount) lines.push({ leftText: 'ส่วนลด', rightText: `${formatDiscountPercent(bill.discount)}%` });
       lines.push({ leftText: 'ราคาสุทธิ', rightText: `฿${money(getSalesBillNetPrice(bill))}`, bold: true });
       lines.push({ text: '--------------------------------' });
     });
@@ -1832,7 +1836,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
             <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); const line = item.isCustomAmount ? `฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์` : `dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์`; return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>${line}</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -1845,7 +1849,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
           <div style="font-weight:700;">${esc(bill.Bill_No || '-')}</div>
           <div style="margin-top:5px; color:#334155;">${esc(bill.productName || '-')}</div>
           <div style="margin-top:4px; color:#64748b; font-size:.86rem; display:flex; justify-content:space-between; gap:12px;"><span>ราคา</span><span>฿${Number(bill.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-          <div style="margin-top:3px; color:#64748b; font-size:.86rem; display:flex; justify-content:space-between; gap:12px;"><span>ส่วนลด</span><span>${formatDiscountPercent(bill.discount)}%</span></div>
+          ${bill.isCustomAmount ? '' : `<div style="margin-top:3px; color:#64748b; font-size:.86rem; display:flex; justify-content:space-between; gap:12px;"><span>ส่วนลด</span><span>${formatDiscountPercent(bill.discount)}%</span></div>`}
           <div style="margin-top:3px; color:#059669; font-size:.9rem; font-weight:700; display:flex; justify-content:space-between; gap:12px;"><span>ราคาสุทธิ</span><span>฿${getSalesBillNetPrice(bill).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
           <div style="margin-top:5px; color:#475569; font-size:.88rem;">${esc(bill.memberName || '-')} · ${esc(maskPhoneNumber(bill.memberPhone))}</div>
           <div style="margin-top:4px; color:#64748b; font-size:.86rem;">${bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-'}</div>
@@ -1997,7 +2001,7 @@ function renderClientDetailPage(data) {
           <div style="display:flex; flex-direction:column; align-items:center; margin:0.65rem 0 0.45rem; text-align:center;">
             ${renderProductImage(data.productId, data.productName, imgUrl, 170)}
             <div style="margin-top:0.45rem; color:#0284c7; font-weight:bold; font-size:1rem; line-height:1.3;">${esc(data.productName)}</div>
-            <div style="margin-top:0.08rem; color:#dc2626; font-weight:bold; font-size:0.9rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>
+            ${isCustomAmountProduct ? '' : `<div style="margin-top:0.08rem; color:#dc2626; font-weight:bold; font-size:0.9rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
           </div>
 
           ${isCustomAmountProduct ? '' : `<div style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.45rem 0 0.2rem; padding:0.5rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
@@ -2065,7 +2069,7 @@ function renderClientDetailPage(data) {
       try {
         // ต้องผ่านการตรวจ Coupon_No ล่าสุดจากฐานข้อมูลก่อน จึงค่อยเชื่อมต่อเครื่องพิมพ์
         const latestCoupon = await window.staffApi.validateCouponForRedeem(data.phone, data.couponNo);
-        data.discount = Number(latestCoupon?.discount ?? data.discount ?? 0);
+        data.discount = isCustomAmountProduct ? 0 : Number(latestCoupon?.discount ?? data.discount ?? 0);
         data.usedCount = Number(latestCoupon?.usedCount ?? data.usedCount ?? 0);
         data.allLimit = Number(latestCoupon?.allLimit ?? data.allLimit ?? 0);
         data.quotaPerPeriod = Number(latestCoupon?.quotaPerPeriod ?? data.quotaPerPeriod ?? 0);
@@ -2140,7 +2144,7 @@ async function openHistoryModal(phone, clientData, onClose) {
 
       <div style="max-width:600px; width:100%; margin:0 auto; padding:1.25rem; box-sizing:border-box; overflow-y:auto; flex:1;">
         <div style="border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">📜 ประวัติการใช้สิทธิ์ (${esc(memberName)})</h3>
+          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">ประวัติการใช้สิทธิ์ <span style="font-size:0.9rem; font-weight:600; color:#475569;">${esc(memberName)}</span></h3>
           <div id="history-list-body">
             <p style="text-align:center; color:#666; padding:2rem 0;">กำลังดึงประวัติการใช้สิทธิ์...</p>
           </div>
@@ -2157,26 +2161,32 @@ async function openHistoryModal(phone, clientData, onClose) {
     const historyList = await window.staffApi.getHistory(phone);
     const bodyEl = document.querySelector('#history-list-body');
 
-    if (!historyList || historyList.length === 0) {
-      bodyEl.innerHTML = `<p style="text-align:center; color:#64748b; padding:2rem 0;">ยังไม่มีประวัติการใช้สิทธิ์</p>`;
-      return;
-    }
+    const historyRows = historyList?.length
+      ? historyList.map((item, index) => `
+          <tr style="border-bottom:1px solid #e5e7eb;">
+            <td style="padding:0.75rem 0.25rem; text-align:center; vertical-align:middle;">${index + 1}</td>
+            <td style="padding:0.75rem 0.5rem; text-align:left; vertical-align:middle; font-size:0.8rem; color:#000; line-height:1.45;">
+              <div>${esc(item.useDate)}</div>
+              <div style="font-size:0.72rem; color:#6b7280;">เลขที่บิล: ${esc(item.billNo)}</div>
+            </td>
+            <td style="padding:0.75rem 0.5rem; text-align:center; vertical-align:middle;">
+              <div style="display:inline-flex; flex-direction:column; align-items:center; gap:5px; max-width:92px;">
+                ${renderProductImage(item.productId, item.productName, item.productImage, 40)}
+                <strong style="font-size:0.8rem; line-height:1.25; display:block; overflow-wrap:anywhere;">${esc(item.productName)}</strong>
+              </div>
+            </td>
+          </tr>`).join('')
+      : '<tr><td colspan="3" style="text-align:center; padding:2rem; color:#6b7280;">ยังไม่มีประวัติการใช้สิทธิ์</td></tr>';
 
-    bodyEl.innerHTML = historyList.map(item => `
-      <div style="border-bottom:1px solid #e2e8f0; padding:0.85rem 0; display:flex; gap:0.75rem; align-items:center;">
-        <div style="font-size:0.85rem; color:#000; font-weight:bold; text-align:left; flex:1 1 0; min-width:0; line-height:1.45;">
-          <div>${esc(item.useDate)}</div>
-          <div style="font-size:0.78rem; color:#64748b; font-weight:600;">เลขที่บิล: ${esc(item.billNo)}</div>
-        </div>
-        <div style="min-width:0; flex:1 1 0; font-size:0.8rem; color:#64748b;">
-          <div>คูปอง: ${esc(item.couponNo)}</div>
-        </div>
-        <div style="flex:0 0 76px; display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; min-width:0;">
-          ${renderProductImage(item.productId, item.productName, item.productImage, 58)}
-          <div style="width:100%; font-weight:bold; color:#1e293b; font-size:0.78rem; line-height:1.25; overflow-wrap:anywhere;">${esc(item.productName)}</div>
-        </div>
-      </div>
-    `).join('');
+    bodyEl.innerHTML = `
+      <table style="width:100%; border-collapse:collapse;">
+        <thead><tr style="border-bottom:2px solid #d1d5db; background:#f3f4f6;">
+          <th style="padding:0.5rem; text-align:center;">ลำดับ</th>
+          <th style="padding:0.5rem; text-align:left;">วันที่-เวลา</th>
+          <th style="padding:0.5rem; text-align:center;">สินค้า</th>
+        </tr></thead>
+        <tbody>${historyRows}</tbody>
+      </table>`;
   } catch (err) {
     document.querySelector('#history-list-body').innerHTML = `
       <p style="text-align:center; color:#dc2626; padding:1rem;">เกิดข้อผิดพลาด: ${esc(err.message)}</p>

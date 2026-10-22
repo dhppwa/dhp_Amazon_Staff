@@ -2923,7 +2923,7 @@ function renderMainUI() {
     <div class="shell staff-main-shell" style="max-width: 480px; margin: 0 auto; padding: 1rem; font-family: sans-serif; position: relative; min-height: 80vh;">
       <header style="text-align: center; margin-bottom: 1.5rem;">
         <img 
-          src="public/assets/image/icon-192.png?v=10" 
+          src="public/assets/image/icon-512.png?v=17" 
           alt="D House X Cafe Amazon Logo" 
           style="width: 80px; height: 80px; object-fit: contain; margin-bottom: 0.5rem; border-radius: 12px;"
         >

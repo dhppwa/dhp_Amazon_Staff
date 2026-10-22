@@ -740,10 +740,10 @@ function openPrinterSettings() {
 const PRINTER_WRITE_CHUNK_SIZE = 64;
 // ใบเสร็จมีภาพและอาจพิมพ์ติดกัน 2 ใบ จึงใช้ขนาดที่เสถียรกว่าเฉพาะส่วนนี้
 const RECEIPT_WRITE_CHUNK_SIZE = 64;
-const PRINTER_BUFFER_CLEAR_DELAY_MS = 1200;
-const PRINTER_POST_DATA_DRAIN_DELAY_MS = 900;
-const PRINTER_INTER_RECEIPT_DELAY_MS = 900;
-const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 500;
+const PRINTER_BUFFER_CLEAR_DELAY_MS = 500;
+const PRINTER_POST_DATA_DRAIN_DELAY_MS = 400;
+const PRINTER_INTER_RECEIPT_DELAY_MS = 300;
+const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 250;
 // เครื่องพิมพ์บางรุ่นตอบรับ BLE เร็วกว่าที่บัฟเฟอร์ภายในรับภาพได้
 // จึงพักทุกก้อนเมื่อจำเป็นต้องใช้ writeWithoutResponse เพื่อไม่ให้ข้อมูลภาพขาด
 const PRINTER_WRITE_BURST_CHUNKS = 1;
@@ -2008,8 +2008,6 @@ function renderClientDetailPage(data) {
             <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
             <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
           </div>`}
-          ${renderReceiptPreviewCards(data)}
-          
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
               hasCouponOrProduct

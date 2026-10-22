@@ -2394,11 +2394,11 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               </div>
             </fieldset>
 
-            <div id="h-fields-rights" style="display:grid; grid-template-columns:minmax(0, 1fr) 84px; align-items:start; gap:0.5rem; width:100%;">
-              <div style="min-width:0;">
-                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
+            <div id="h-fields-rights" style="display:flex; align-items:flex-end; gap:0.45rem; width:100%;">
+              <div style="flex:1 1 auto; min-width:0;">
+                <label style="height:32px; display:flex; align-items:flex-end; font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
                 <div style="display:flex; align-items:stretch;">
-                  <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
+                  <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:82px; min-width:72px; flex:1 1 82px; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem; appearance:textfield; -moz-appearance:textfield; -webkit-appearance:none;" />
                   <div id="h-limit-type-picker" style="position:relative; flex:0 0 auto;">
                     <input type="hidden" id="h-field-limitType" value="${Number(record?.limitType ?? 0)}" />
                     <button id="h-limit-type-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:132px; height:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:5px; padding:0.5rem 0.55rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.8rem; font-weight:600; white-space:nowrap;">
@@ -2412,9 +2412,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                   </div>
                 </div>
               </div>
-              <div style="flex:0 0 84px; min-width:84px;">
-                <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ที่ใช้แล้ว</label>
-                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; background:#f1f5f9; color:#475569; cursor:not-allowed; appearance:textfield; -moz-appearance:textfield; -webkit-appearance:none;" />
+              <div style="flex:0 0 58px; min-width:58px;">
+                <label style="height:32px; display:flex; align-items:flex-end; font-size:0.67rem; font-weight:bold; color:#475569; line-height:1.05; overflow-wrap:anywhere;">สิทธิ์ที่ใช้แล้ว</label>
+                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem 0.25rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.9rem; text-align:center; background:#f1f5f9; color:#475569; cursor:not-allowed; appearance:textfield; -moz-appearance:textfield; -webkit-appearance:none;" />
               </div>
             </div>
 
@@ -2949,9 +2949,9 @@ function renderMainUI() {
     <div class="shell staff-main-shell" style="max-width: 480px; margin: 0 auto; padding: 1rem; font-family: sans-serif; position: relative; min-height: 80vh;">
       <header style="text-align: center; margin-bottom: 1.5rem;">
         <img 
-          src="public/assets/image/icon-512.png?v=17" 
+          src="public/assets/image/icon-512.png?v=18" 
           alt="D House X Cafe Amazon Logo" 
-          style="width: 80px; height: 80px; object-fit: contain; margin-bottom: 0.5rem; border-radius: 12px;"
+          style="width: 100px; height: 100px; object-fit: contain; margin-bottom: 0.5rem; border-radius: 12px;"
         >
         <h1 style="color: #fff; margin: 0; font-size: 1.5rem;">D House x Café Amazon</h1>
         <p style="color: #f5eee3; margin-top: 0.25rem;">สแกน QR Code เพื่อใช้สิทธิ์และพิมพ์ใบเสร็จ</p>

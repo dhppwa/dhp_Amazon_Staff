@@ -773,7 +773,8 @@ function getReportPrintChunkSize(lines) {
 async function sendBytes(ch, bytes, chunkSize = PRINTER_WRITE_CHUNK_SIZE, { forceWithResponse = false } = {}) {
   const canWriteWithResponse = Boolean(ch.properties.write && ch.writeValueWithResponse);
   const canWriteWithoutResponse = Boolean(ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse);
-  // ใช้ writeWithoutResponse ก่อนเพื่อความเร็ว แต่ใบร้านค้าและรายงานรอการตอบกลับเพื่อกันบัฟเฟอร์ล้น
+  // ใช้ writeWithoutResponse เพื่อหลีกเลี่ยงรอบรอการตอบรับของ BLE ทุกก้อน
+  // โดยจำกัดก้อนและพักสั้น ๆ ทุกก้อนเพื่อไม่ให้บัฟเฟอร์เครื่องพิมพ์ล้น
   const useWriteWithoutResponse = !forceWithResponse && canWriteWithoutResponse;
   const write = forceWithResponse && canWriteWithResponse
     ? data => ch.writeValueWithResponse(data)
@@ -888,7 +889,7 @@ function createReceiptLines(data, billNo) {
     },
     ...(isCustomAmountProduct ? [] : [{ text: '1 สิทธิ์ (ใช้สิทธิ์ฟรี)' }]),
     {
-      leftText: `${data.productName} 1 แก้ว`,
+      leftText: `${data.productName}${isCustomAmountProduct ? '' : ' 1 แก้ว'}`,
       rightText: isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE',
       leftBold: true,
       rightBold: false
@@ -1133,8 +1134,8 @@ async function runPrint(data, billNo) {
       const receiptLines = receiptBlocks[index];
       await printReceiptESC_POS(characteristic, receiptLines, {
         chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-        // ใบเสร็จใช้การตอบรับของอุปกรณ์ทุกก้อน เพื่อลดข้อความ/ภาพเพี้ยนขณะพิมพ์ต่อเนื่อง
-        forceWithResponse: true
+        // ส่งแบบไม่รอการตอบรับทีละก้อน 64 bytes พร้อมพักสั้น ๆ ใน sendBytes
+        forceWithResponse: false
       });
       if (index < receiptBlocks.length - 1) await sleep(PRINTER_INTER_RECEIPT_DELAY_MS);
     }
@@ -1171,7 +1172,7 @@ async function printTestReceipt() {
         const receiptLines = receiptBlocks[index];
         await printReceiptESC_POS(characteristic, receiptLines, {
           chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-          forceWithResponse: true
+          forceWithResponse: false
         });
         if (index < receiptBlocks.length - 1) await sleep(PRINTER_INTER_RECEIPT_DELAY_MS);
       }
@@ -1460,7 +1461,7 @@ function renderAirPrintReceipt(data, billNo) {
         <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
         <hr>
         ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : '<p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>'}
-        <p class="airprint-product airprint-row"><span>${esc(data.productName)} 1 แก้ว</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
+        <p class="airprint-product airprint-row"><span>${esc(data.productName)}${isCustomAmountProduct ? '' : ' 1 แก้ว'}</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
         ${isMerchantOnly && !isCustomAmountProduct ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
         ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
         ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
@@ -1661,6 +1662,13 @@ function groupSalesSummaryByProduct(summaryItems) {
   return [...products.values()].sort((a, b) => a.productName.localeCompare(b.productName, 'th'));
 }
 
+function getSalesReportCountUnit(bills) {
+  const units = new Set((bills || []).map(bill => (
+    Boolean(bill?.isCustomAmount) || /^C-\d+$/i.test(String(bill?.productId ?? bill?.Product_Type ?? ''))
+  ) ? 'บิล' : 'สิทธิ์'));
+  return units.size === 1 ? [...units][0] : 'รายการ';
+}
+
 function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   const money = value => Number(value || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const total = bills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
@@ -1672,10 +1680,13 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode === 'summary') {
     groupSalesSummaryByProduct(summarizeSalesReportBills(bills)).forEach(group => {
-      lines.push({ inlineLeftText: group.productName, inlineRightText: `\u00a0฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
+      const isCustomAmountGroup = group.discounts.every(item => item.isCustomAmount);
+      lines.push(isCustomAmountGroup
+        ? { text: group.productName, bold: true }
+        : { inlineLeftText: group.productName, inlineRightText: `\u00a0฿${money(group.productPrice)}`, leftBold: true, rightBold: false });
       group.discounts.forEach(item => {
         const discountedUnitPrice = item.productPrice * (1 - item.discount / 100);
-        lines.push({ leftText: item.isCustomAmount ? `฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์` : `dis ${formatDiscountPercent(item.discount)}% ฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์`, rightText: `฿${money(item.total)}`, rightBold: false });
+        lines.push({ leftText: item.isCustomAmount ? `฿${money(discountedUnitPrice)} @${item.quantity} บิล` : `dis ${formatDiscountPercent(item.discount)}% ฿${money(discountedUnitPrice)} @${item.quantity} สิทธิ์`, rightText: `฿${money(item.total)}`, rightBold: false });
       });
     });
   } else {
@@ -1695,7 +1706,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode !== 'summary') lines.push({ text: '--------------------------------' });
   lines.push({
-    leftText: `รวมจำนวน ${bills.length} สิทธิ์`,
+    leftText: `รวมจำนวน ${bills.length} ${getSalesReportCountUnit(bills)}`,
     rightText: `฿${money(total)}`,
     bold: true,
     doubleUnderline: true,
@@ -1759,8 +1770,8 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
           // รายงานการขายเป็นเอกสารหนึ่งชุด จึงตัดครั้งเดียวหลังพิมพ์เสร็จเสมอ
           cutPaper: true,
           chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
-          // ใช้โหมดเสถียรเหมือนใบเสร็จ เพราะรายงานมีภาพ raster จำนวนมาก
-          forceWithResponse: true
+          // ใช้ก้อน 64 bytes และพักสั้น ๆ เพื่อส่งรายงานได้เร็วขึ้น
+          forceWithResponse: false
         });
       });
       removePrintLoadingDialog();
@@ -1826,7 +1837,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
     const content = document.querySelector('#sales-report-content');
     const reportMode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'summary';
     const total = reportBills.reduce((sum, bill) => sum + getSalesBillNetPrice(bill), 0);
-    const reportUnit = reportMode === 'summary' ? 'สิทธิ์' : 'แก้ว';
+    const reportUnit = getSalesReportCountUnit(reportBills);
     const header = `<div style="display:flex; justify-content:space-between; gap:12px; margin-bottom:12px; padding:14px; background:#ecfdf5; border-radius:10px; color:#065f46; font-size:1.12rem; font-weight:700;"><span>จำนวน ${reportBills.length.toLocaleString('th-TH')} ${reportUnit}</span><span>ยอดขาย ฿${total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`;
 
     if (reportMode === 'summary') {
@@ -1835,8 +1846,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span><span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
-            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); const line = item.isCustomAmount ? `฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์` : `dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์`; return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>${line}</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
+            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span>${group.discounts.every(item => item.isCustomAmount) ? '' : `<span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`}</div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); const line = item.isCustomAmount ? `฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} บิล` : `dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์`; return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>${line}</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;

@@ -899,7 +899,7 @@ function createReceiptLines(data, billNo) {
       leftText: `ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์`,
       rightText: `คงเหลือ: ${usage.remainingText}`
     }]),
-    { text: 'ขอบคุณที่ใช้บริการ', align: 'center' }
+    ...(!isMerchantCopy ? [{ text: 'ขอบคุณที่ใช้บริการ', align: 'center' }] : [])
   ];
 
   return {
@@ -971,7 +971,8 @@ async function printReceiptESC_POS(characteristic, lines, {
         bold: l.bold,
         leftBold: l.leftBold,
         rightBold: l.rightBold,
-        fontSize: l.fontSize
+        fontSize: l.fontSize,
+        doubleUnderline: Boolean(l.doubleUnderline)
       });
     } else {
       let cur = '';
@@ -1046,6 +1047,29 @@ async function printReceiptESC_POS(characteristic, lines, {
       } else {
         ctx.fillText(r.text, PAD, yPos);
       }
+    }
+
+    // ใช้เส้นใต้คู่เฉพาะใต้ข้อความยอดรวมทั้งฝั่งซ้ายและขวา
+    if (r.doubleUnderline) {
+      const underlineY = yPos + Math.max(10, Number(r.fontSize || FONT_PX) * 0.45);
+      const drawDoubleUnderline = (fromX, toX) => {
+        if (toX <= fromX) return;
+        ctx.moveTo(fromX, underlineY);
+        ctx.lineTo(toX, underlineY);
+        ctx.moveTo(fromX, underlineY + 3);
+        ctx.lineTo(toX, underlineY + 3);
+      };
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (r.isSplit) {
+        ctx.font = fontOf({ ...r, bold: r.leftBold ?? r.bold });
+        const leftWidth = ctx.measureText(r.leftText).width;
+        ctx.font = fontOf({ ...r, bold: r.rightBold ?? r.bold });
+        const rightWidth = ctx.measureText(r.rightText).width;
+        drawDoubleUnderline(PAD, PAD + leftWidth);
+        drawDoubleUnderline(width - PAD - rightWidth, width - PAD);
+      }
+      ctx.stroke();
     }
   });
 
@@ -1441,7 +1465,7 @@ function renderAirPrintReceipt(data, billNo) {
         ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
         ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
         <hr>
-        <p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>
+        ${isMerchantOnly ? '' : '<p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>'}
       </main>
       <div class="airprint-actions">
         <p>เลือกเครื่องพิมพ์ AirPrint จากเมนูพิมพ์ของ iPhone/iPad</p>
@@ -1666,7 +1690,13 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   }
 
   if (mode !== 'summary') lines.push({ text: '--------------------------------' });
-  lines.push({ leftText: `รวมจำนวน ${bills.length} ${mode === 'summary' ? 'สิทธิ์' : 'แก้ว'}`, rightText: `฿${money(total)}`, bold: true, fontSize: 30, emphasis: true });
+  lines.push({
+    leftText: `รวมจำนวน ${bills.length} สิทธิ์`,
+    rightText: `฿${money(total)}`,
+    bold: true,
+    doubleUnderline: true,
+    ...(mode === 'summary' ? {} : { fontSize: 30, emphasis: true })
+  });
   return lines;
 }
 
@@ -1682,7 +1712,8 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     if (line.leftText !== undefined || line.rightText !== undefined) {
       const leftWeight = (line.leftBold ?? line.bold) ? '700' : '400';
       const rightWeight = (line.rightBold ?? line.bold) ? '700' : '400';
-      return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:${line.emphasis ? '22px' : (line.fontSize ? '15px' : '17px')};"><span style="font-weight:${leftWeight};">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};">${esc(line.rightText || '')}</span></div>`;
+      const underlineStyle = line.doubleUnderline ? ' display:inline-block; border-bottom:4px double #000; padding-bottom:2px;' : '';
+      return `<div style="display:flex; justify-content:space-between; gap:12px; font-size:${line.emphasis ? '22px' : (line.fontSize ? '15px' : '17px')};"><span style="font-weight:${leftWeight};${underlineStyle}">${esc(line.leftText || '')}</span><span style="text-align:right; font-weight:${rightWeight};${underlineStyle}">${esc(line.rightText || '')}</span></div>`;
     }
     return `<div style="text-align:${line.align === 'center' ? 'center' : 'left'}; font-size:${line.fontSize ? '15px' : '17px'}; font-weight:${line.bold ? '700' : '400'}; overflow-wrap:anywhere;">${esc(line.text || '')}</div>`;
   }).join('');
@@ -1973,7 +2004,7 @@ function renderClientDetailPage(data) {
             <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
             <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
           </div>`}
-          ${/* ซ่อนพรีวิวใบเสร็จหลังสแกน QR แต่ยังคงฟังก์ชันพิมพ์จริงไว้ */ ''}
+          ${renderReceiptPreviewCards(data)}
           
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
@@ -2098,7 +2129,7 @@ function renderClientDetailPage(data) {
 
 // ===== หน้าประวัติการใช้สิทธิ์ (ขยายแสดงผลแบบ Full Screen) =====
 async function openHistoryModal(phone, clientData, onClose) {
-  const loginDisplay = getMemberLoginDisplay(clientData, phone, true);
+  const memberName = clientData?.name || clientData?.Name || '-';
   const modalHtml = `
     <div id="history-modal" class="staff-page">
       
@@ -2109,7 +2140,7 @@ async function openHistoryModal(phone, clientData, onClose) {
 
       <div style="max-width:600px; width:100%; margin:0 auto; padding:1.25rem; box-sizing:border-box; overflow-y:auto; flex:1;">
         <div style="border:1px solid #e5e7eb; border-radius:12px; padding:1.25rem; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05);">
-          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">📜 ประวัติการใช้สิทธิ์ (${esc(loginDisplay.value)})</h3>
+          <h3 style="margin:0 0 1rem 0; color:#059669; border-bottom:2px solid #059669; padding-bottom:0.4rem;">📜 ประวัติการใช้สิทธิ์ (${esc(memberName)})</h3>
           <div id="history-list-body">
             <p style="text-align:center; color:#666; padding:2rem 0;">กำลังดึงประวัติการใช้สิทธิ์...</p>
           </div>
@@ -2133,7 +2164,7 @@ async function openHistoryModal(phone, clientData, onClose) {
 
     bodyEl.innerHTML = historyList.map(item => `
       <div style="border-bottom:1px solid #e2e8f0; padding:0.85rem 0; display:flex; gap:0.75rem; align-items:center;">
-        <div style="font-size:0.85rem; color:#059669; font-weight:bold; text-align:left; flex:1 1 0; min-width:0; line-height:1.45;">
+        <div style="font-size:0.85rem; color:#000; font-weight:bold; text-align:left; flex:1 1 0; min-width:0; line-height:1.45;">
           <div>${esc(item.useDate)}</div>
           <div style="font-size:0.78rem; color:#64748b; font-weight:600;">เลขที่บิล: ${esc(item.billNo)}</div>
         </div>
@@ -2334,18 +2365,18 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                   <input type="number" id="h-field-quotaPerDay" value="${isEdit ? (record?.quotaPerDay ?? '') : ''}" min="1" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
                   <div id="h-limit-type-picker" style="position:relative; flex:0 0 auto;">
                     <input type="hidden" id="h-field-limitType" value="${Number(record?.limitType ?? 0)}" />
-                    <button id="h-limit-type-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:78px; height:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:5px; padding:0.5rem 0.55rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.85rem; font-weight:600; white-space:nowrap;">
-                      <span id="h-limit-type-label">${Number(record?.limitType ?? 0) === 1 ? 'เดือน' : Number(record?.limitType ?? 0) === 2 ? 'ปี' : 'วัน'}</span><span aria-hidden="true" style="font-size:0.65rem;">▼</span>
+                    <button id="h-limit-type-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:132px; height:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:5px; padding:0.5rem 0.55rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.8rem; font-weight:600; white-space:nowrap;">
+                      <span id="h-limit-type-label">${Number(record?.limitType ?? 0) === 1 ? 'เดือน หรือ ต่อเดือน' : Number(record?.limitType ?? 0) === 2 ? 'ปี หรือ ต่อปี' : 'วัน หรือ ต่อวัน'}</span><span aria-hidden="true" style="font-size:0.65rem;">▼</span>
                     </button>
-                    <div id="h-limit-type-menu" role="listbox" aria-label="รอบการจำกัดสิทธิ์" hidden style="position:absolute; z-index:30; top:calc(100% + 4px); right:0; width:92px; padding:4px; border:1px solid #cbd5e1; border-radius:7px; background:#fff; box-shadow:0 8px 20px rgba(15,23,42,.18);">
-                      <button type="button" role="option" data-limit-type="0" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">วัน</button>
-                      <button type="button" role="option" data-limit-type="1" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">เดือน</button>
-                      <button type="button" role="option" data-limit-type="2" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.85rem; text-align:left;">ปี</button>
+                    <div id="h-limit-type-menu" role="listbox" aria-label="รอบการจำกัดสิทธิ์" hidden style="position:absolute; z-index:30; top:calc(100% + 4px); right:0; width:146px; padding:4px; border:1px solid #cbd5e1; border-radius:7px; background:#fff; box-shadow:0 8px 20px rgba(15,23,42,.18);">
+                      <button type="button" role="option" data-limit-type="0" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">วัน หรือ ต่อวัน</button>
+                      <button type="button" role="option" data-limit-type="1" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">เดือน หรือ ต่อเดือน</button>
+                      <button type="button" role="option" data-limit-type="2" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">ปี หรือ ต่อปี</button>
                     </div>
                   </div>
                 </div>
               </div>
-              <div style="flex:1;">
+              <div style="flex:0 0 108px;">
                 <label style="font-size:0.8rem; font-weight:bold; color:#475569;">สิทธิ์ที่ใช้แล้ว</label>
                 <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; background:#f1f5f9; color:#475569; cursor:not-allowed;" />
               </div>
@@ -2483,7 +2514,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       allLimitField.value = '0';
       quotaField.value = '0';
       limitTypeField.value = '0';
-      limitTypeLabel.textContent = 'วัน';
+      limitTypeLabel.textContent = 'วัน หรือ ต่อวัน';
       allLimitField.style.background = '#f1f5f9';
       allLimitField.style.color = '#475569';
       allLimitField.style.cursor = 'not-allowed';
@@ -2612,6 +2643,13 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
           title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
         });
         invalidInput.focus();
+        return;
+      }
+      if (quotaVal > allLimitVal) {
+        await showAppDialog('จำนวนจำกัดสิทธิ์ต้องน้อยกว่าหรือเท่ากับสิทธิ์ทั้งหมด', {
+          title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
+        });
+        quotaInput.focus();
         return;
       }
     }

@@ -194,6 +194,39 @@ body {
   padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
+/* กำหนดพื้นที่เลื่อนเฉพาะหน้าประวัติ เพื่อให้รายการยาวเลื่อนได้ใน PWA ทุกระบบ */
+#history-modal {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#history-modal > div:nth-child(2) {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  overflow: hidden !important;
+}
+
+/* หัวประวัติและชื่อสมาชิกคงที่ ให้เลื่อนเฉพาะรายการด้านล่าง */
+#history-modal > div:nth-child(2) > div {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+#history-modal #history-list-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 /* หน้าแรก Staff: เว้นจากแถบสถานะ/รอยบาก เพื่อไม่ให้โลโก้ถูกทับ */
 .staff-main-shell {
   padding-top: calc(24px + env(safe-area-inset-top, 0px)) !important;

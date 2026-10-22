@@ -2394,7 +2394,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               </div>
             </fieldset>
 
-            <div id="h-fields-rights" style="display:flex; align-items:flex-end; gap:0.45rem; width:100%;">
+            <div id="h-fields-rights" style="display:flex; align-items:flex-end; width:100%;">
               <div style="flex:1 1 auto; min-width:0;">
                 <label style="height:32px; display:flex; align-items:flex-end; font-size:0.8rem; font-weight:bold; color:#475569;">จำกัดสิทธิ์</label>
                 <div style="display:flex; align-items:stretch;">
@@ -2411,10 +2411,6 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                     </div>
                   </div>
                 </div>
-              </div>
-              <div style="flex:0 0 58px; min-width:58px;">
-                <label style="height:32px; display:flex; align-items:flex-end; font-size:0.67rem; font-weight:bold; color:#475569; line-height:1.05; overflow-wrap:anywhere;">สิทธิ์ที่ใช้แล้ว</label>
-                <input type="number" id="h-field-usedCount" value="${isEdit ? (record?.usedCount ?? 0) : 0}" min="0" readonly aria-readonly="true" title="ค่านี้คำนวณจากการใช้สิทธิ์และไม่สามารถแก้ไขได้" style="width:100%; padding:0.6rem 0.25rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.9rem; text-align:center; background:#f1f5f9; color:#475569; cursor:not-allowed; appearance:textfield; -moz-appearance:textfield; -webkit-appearance:none;" />
               </div>
             </div>
 
@@ -2642,11 +2638,11 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const limitAll = getLimitAll();
     const isNonCustomer = [2, 3].includes(accessLevel);
     const quotaInput = document.querySelector('#h-field-quotaPerDay');
-    const usedInput = document.querySelector('#h-field-usedCount');
     const allLimitInput = document.querySelector('#h-field-allLimit');
     const discountInput = document.querySelector('#h-field-discount');
     const quotaVal = isNonCustomer || limitAll ? 0 : Number.parseInt(quotaInput.value, 10);
-    const usedCountVal = isNonCustomer ? 0 : Number.parseInt(usedInput.value, 10);
+    // ค่านี้คำนวณจากการใช้สิทธิ์จริง จึงไม่เปิดให้แก้ไขจากฟอร์มสมาชิก
+    const usedCountVal = isNonCustomer ? 0 : (isEdit ? Number(record?.usedCount ?? 0) : 0);
     const allLimitVal = isNonCustomer || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
     const discountVal = Number.parseFloat(discountInput.value);
 
@@ -2668,14 +2664,14 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     }
 
     if (!isNonCustomer && !limitAll) {
-      const inputsToValidate = [quotaInput, usedInput, allLimitInput];
+      const inputsToValidate = [quotaInput, allLimitInput];
       const invalidInput = inputsToValidate.find((input) => {
         const value = Number(input.value);
         if (input.value.trim() === '' || !Number.isInteger(value)) return true;
-        return input === usedInput ? value < 0 : value <= 0;
+        return value <= 0;
       });
       if (invalidInput) {
-        await showAppDialog('กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0 ส่วนสิทธิ์ที่ใช้แล้วต้องไม่น้อยกว่า 0', {
+        await showAppDialog('กรุณากรอกข้อมูลสิทธิ์ให้ครบถ้วน โดยสิทธิ์ / วัน และสิทธิ์ทั้งหมดต้องมากกว่า 0', {
           title: 'ข้อมูลสิทธิ์ไม่ถูกต้อง'
         });
         invalidInput.focus();

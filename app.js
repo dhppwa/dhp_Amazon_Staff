@@ -746,7 +746,9 @@ const PRINTER_INTER_RECEIPT_DELAY_MS = 300;
 const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 250;
 // เครื่องพิมพ์บางรุ่นตอบรับ BLE เร็วกว่าที่บัฟเฟอร์ภายในรับภาพได้
 // จึงพักทุกก้อนเมื่อจำเป็นต้องใช้ writeWithoutResponse เพื่อไม่ให้ข้อมูลภาพขาด
-const PRINTER_WRITE_BURST_CHUNKS = 1;
+// คงขนาดก้อน 64 bytes แต่ส่งทีละ 2 ก้อนก่อนพัก เพื่อเพิ่มความเร็ว
+// โดยยังไม่เพิ่มขนาดก้อนจนเสี่ยงให้ข้อมูลภาพเพี้ยน
+const PRINTER_WRITE_BURST_CHUNKS = 2;
 const PRINTER_WRITE_BURST_DELAY_MS = 20;
 let printerWriteWithoutResponseDelayMs = 0;
 let printerJobQueue = Promise.resolve();

@@ -1622,11 +1622,21 @@ function getSalesBillNetPrice(bill) {
   return price * (1 - discount / 100);
 }
 
+function isCustomAmountSalesBill(bill) {
+  return Boolean(bill?.isCustomAmount) || /^C-\d+$/i.test(String(bill?.productId ?? bill?.Product_Type ?? ''));
+}
+
+function sortSalesReportBills(bills) {
+  return (bills || []).map((bill, index) => ({ bill, index }))
+    .sort((a, b) => Number(isCustomAmountSalesBill(a.bill)) - Number(isCustomAmountSalesBill(b.bill)) || a.index - b.index)
+    .map(item => item.bill);
+}
+
 function summarizeSalesReportBills(bills) {
   const summaryMap = new Map();
   bills.forEach(bill => {
     const productKey = String(bill.productId || bill.Product_Type || bill.productName || '-');
-    const isCustomAmount = Boolean(bill.isCustomAmount) || /^C-\d+$/i.test(String(bill.productId ?? bill.Product_Type ?? ''));
+    const isCustomAmount = isCustomAmountSalesBill(bill);
     const discount = isCustomAmount ? 0 : Math.min(100, Math.max(0, Number(bill.discount ?? bill.Discount ?? 0)));
     const key = `${productKey}::${discount}`;
     const current = summaryMap.get(key) || {
@@ -1661,7 +1671,11 @@ function groupSalesSummaryByProduct(summaryItems) {
     group.discounts.push(item);
     products.set(key, group);
   });
-  return [...products.values()].sort((a, b) => a.productName.localeCompare(b.productName, 'th'));
+  return [...products.values()].sort((a, b) => {
+    const aIsCustomAmount = a.discounts.every(item => item.isCustomAmount);
+    const bIsCustomAmount = b.discounts.every(item => item.isCustomAmount);
+    return Number(aIsCustomAmount) - Number(bIsCustomAmount) || a.productName.localeCompare(b.productName, 'th');
+  });
 }
 
 function getSalesReportCountUnit(bills) {
@@ -1694,7 +1708,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
   } else {
     lines.push({ text: 'รายละเอียด', align: 'center' });
     lines.push({ text: '--------------------------------' });
-    bills.forEach(bill => {
+    sortSalesReportBills(bills).forEach(bill => {
       const saleDate = bill.InsertDate ? new Date(bill.InsertDate).toLocaleString('th-TH') : '-';
       lines.push({ text: saleDate, fontSize: 17 });
       lines.push({ text: `${bill.memberName || '-'} ${maskPhoneNumber(bill.memberPhone)}` });
@@ -1855,7 +1869,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       return;
     }
 
-    content.innerHTML = header + (reportBills.length ? `<div style="display:grid; gap:10px;">${reportBills.map((bill, index) => `
+    const orderedReportBills = sortSalesReportBills(reportBills);
+    content.innerHTML = header + (orderedReportBills.length ? `<div style="display:grid; gap:10px;">${orderedReportBills.map((bill, index) => `
       <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
         ${renderProductImage(bill.Product_Type || bill.productId, bill.productName, bill.productImage, 64)}
         <div style="min-width:0; flex:1;">
@@ -1870,7 +1885,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         </div>
       </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
     content.querySelectorAll('[data-sales-detail-index]').forEach(button => {
-      button.onclick = () => showSalesReportDetail(reportBills[Number(button.dataset.salesDetailIndex)]);
+      button.onclick = () => showSalesReportDetail(orderedReportBills[Number(button.dataset.salesDetailIndex)]);
     });
   };
 

@@ -32,40 +32,12 @@
       transition: opacity 0.3s ease; z-index: 9999;
     }
     #toast.show { opacity: 1; }
-    #portrait-orientation-lock {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 2147483647;
-      align-items: center;
-      justify-content: center;
-      flex-direction: column;
-      gap: 12px;
-      padding: 28px;
-      box-sizing: border-box;
-      background: #0b376d;
-      color: #fff;
-      text-align: center;
-      font-family: "Noto Sans Thai", system-ui, sans-serif;
-    }
-    #portrait-orientation-lock .orientation-icon { font-size: 48px; line-height: 1; }
-    #portrait-orientation-lock strong { font-size: 20px; }
-    #portrait-orientation-lock span { opacity: .86; font-size: 15px; }
-    @media screen and (orientation: landscape) and (pointer: coarse) and (max-height: 700px) {
-      #portrait-orientation-lock { display: flex; }
-    }
   </style>
 </head>
 <body>
 
   <div id="app"></div>
   <div id="toast" role="status"></div>
-  <div id="portrait-orientation-lock" role="alert" aria-live="assertive">
-    <div class="orientation-icon" aria-hidden="true">↻</div>
-    <strong>กรุณาหมุนเครื่องกลับแนวตั้ง</strong>
-    <span>แอปนี้รองรับการใช้งานในแนวตั้ง</span>
-  </div>
-
   <script>
     // Android/เบราว์เซอร์ที่รองรับจะล็อกจริง ส่วน iOS ใช้หน้าจอป้องกันด้านบนแทน
     (() => {
@@ -96,7 +68,7 @@
   <script src="config.js?v=9"></script>
   <script src="d1-client.js?v=3"></script>
   <script src="api.js?v=44"></script>
-  <script src="app.js?v=241"></script>
+  <script src="app.js?v=242"></script>
 
   <!-- สคริปต์เปิดใช้งาน Service Worker สำหรับ Android PWA -->
   <script>

@@ -742,13 +742,14 @@ const PRINTER_WRITE_CHUNK_SIZE = 64;
 const RECEIPT_WRITE_CHUNK_SIZE = 64;
 const PRINTER_BUFFER_CLEAR_DELAY_MS = 500;
 const PRINTER_POST_DATA_DRAIN_DELAY_MS = 400;
-const PRINTER_INTER_RECEIPT_DELAY_MS = 300;
+// เครื่อง XP-58mm ยังระบายภาพและคำสั่งตัดอยู่หลังใบแรก จึงเว้นก่อนส่งใบถัดไป
+const PRINTER_INTER_RECEIPT_DELAY_MS = 1200;
 const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 250;
 // เครื่องพิมพ์บางรุ่นตอบรับ BLE เร็วกว่าที่บัฟเฟอร์ภายในรับภาพได้
 // จึงพักทุกก้อนเมื่อจำเป็นต้องใช้ writeWithoutResponse เพื่อไม่ให้ข้อมูลภาพขาด
-// คงขนาดก้อน 64 bytes แต่ส่งทีละ 16 ก้อนก่อนพัก เพื่อเพิ่มความเร็ว
-// โดยยังไม่เพิ่มขนาดก้อนจนเสี่ยงให้ข้อมูลภาพเพี้ยน
-const PRINTER_WRITE_BURST_CHUNKS = 16;
+// คงขนาดก้อน 64 bytes แต่ส่งเพียง 8 ก้อนก่อนพัก (512 bytes ต่อรอบ)
+// เพื่อลดข้อมูลตกหล่นของ XP-58mm ระหว่างพิมพ์ภาพใบเสร็จ
+const PRINTER_WRITE_BURST_CHUNKS = 8;
 const PRINTER_WRITE_BURST_DELAY_MS = 20;
 let printerWriteWithoutResponseDelayMs = 0;
 let printerJobQueue = Promise.resolve();

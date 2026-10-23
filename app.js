@@ -746,9 +746,9 @@ const PRINTER_INTER_RECEIPT_DELAY_MS = 300;
 const PRINTER_AFTER_CUT_SETTLE_DELAY_MS = 250;
 // เครื่องพิมพ์บางรุ่นตอบรับ BLE เร็วกว่าที่บัฟเฟอร์ภายในรับภาพได้
 // จึงพักทุกก้อนเมื่อจำเป็นต้องใช้ writeWithoutResponse เพื่อไม่ให้ข้อมูลภาพขาด
-// คงขนาดก้อน 64 bytes แต่ส่งทีละ 32 ก้อนก่อนพัก เพื่อเพิ่มความเร็ว
+// คงขนาดก้อน 64 bytes แต่ส่งทีละ 16 ก้อนก่อนพัก เพื่อเพิ่มความเร็ว
 // โดยยังไม่เพิ่มขนาดก้อนจนเสี่ยงให้ข้อมูลภาพเพี้ยน
-const PRINTER_WRITE_BURST_CHUNKS = 32;
+const PRINTER_WRITE_BURST_CHUNKS = 16;
 const PRINTER_WRITE_BURST_DELAY_MS = 20;
 let printerWriteWithoutResponseDelayMs = 0;
 let printerJobQueue = Promise.resolve();
@@ -2024,18 +2024,19 @@ function renderClientDetailPage(data) {
             <p style="margin:0;">${esc(data.address)}</p>
             <p style="margin:0;">${esc(data.project || '-')}</p>
             <p style="margin:0;"><strong>คูปอง:</strong> <span style="color:#059669; font-weight:bold;">${esc(data.couponNo || '-')}</span></p>
+            ${isCustomAmountProduct ? '' : `<p style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.16rem 0 0; padding:0.45rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
+              <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
+              <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
+            </p>`}
           </div>
 
           <div style="display:flex; flex-direction:column; align-items:center; margin:0.65rem 0 0.45rem; text-align:center;">
             ${renderProductImage(data.productId, data.productName, imgUrl, 170)}
-            <div style="margin-top:0.45rem; color:#0284c7; font-weight:bold; font-size:1rem; line-height:1.3;">${esc(data.productName)}</div>
-            ${isCustomAmountProduct ? '' : `<div style="margin-top:0.08rem; color:#dc2626; font-weight:bold; font-size:0.9rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
+            <div style="margin-top:0.45rem; color:#0284c7; font-weight:800; font-size:1.32rem; line-height:1.3;">${esc(data.productName)}</div>
+            ${isCustomAmountProduct
+              ? `<div style="margin-top:0.2rem; color:#047857; font-weight:800; font-size:1.38rem; line-height:1.3;">จำนวนเงิน ฿${formatReceiptPrice(data.productPrice)}</div>`
+              : `<div style="margin-top:0.14rem; color:#dc2626; font-weight:800; font-size:1.18rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
           </div>
-
-          ${isCustomAmountProduct ? '' : `<div style="display:flex; justify-content:space-between; gap:0.5rem; margin:0.45rem 0 0.2rem; padding:0.5rem 0.6rem; border-radius:8px; background:#f8fafc; color:#334155; font-size:0.85rem;">
-            <span><strong>ใช้ไปแล้ว:</strong> <span style="color:#d97706; font-weight:bold;">${usage.usedAfter} สิทธิ์</span></span>
-            <span style="text-align:right;"><strong>คงเหลือ:</strong> <span style="color:#059669; font-weight:bold;">${esc(usage.remainingText)}</span></span>
-          </div>`}
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
               hasCouponOrProduct

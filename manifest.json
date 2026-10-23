@@ -1,13 +1,14 @@
 {
-  "name": "D House x Café Amazon",
-  "short_name": "D House x Café Amazon",
+  "short_name": "D Coupon",
+  "name": "D Coupon",
   "id": "./",
-  "start_url": "./index.html",
+  "start_url": "./",
   "scope": "./",
-  "display": "standalone",
-  "orientation": "portrait",
   "background_color": "#435f52",
   "theme_color": "#435f52",
+  "display": "standalone",
+  "orientation": "portrait",
+  "display_override": ["standalone", "minimal-ui"],
   "icons": [
     {
       "src": "public/assets/image/icon-192.png?v=24",
@@ -15,5 +16,8 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
+  ],
+  "shortcuts": [
+    { "name": "เข้าสู่ระบบ D Coupon", "short_name": "D Coupon", "url": "./" }
   ]
 }

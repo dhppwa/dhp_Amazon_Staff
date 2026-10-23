@@ -1,8 +1,25 @@
-const CACHE_PREFIX = 'amazon-staff-';
-const CACHE_NAME = `${CACHE_PREFIX}v213`;
+const CACHE_PREFIX = 'amazon-client-';
+const CACHE_NAME = `${CACHE_PREFIX}v109`;
+const ASSETS_TO_CACHE = [
+  './',
+  './index.html',
+  './styles.css',
+  './app.js',
+  './api.js',
+  './config.js',
+  './d1-client.js',
+  './manifest.json',
+  './public/assets/image/icon-192.png',
+  './public/assets/image/icon-512.png',
+  './public/assets/image/d-coupon-wordmark.png'
+];
 
 self.addEventListener('install', event => {
-  event.waitUntil(self.skipWaiting());
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.addAll(ASSETS_TO_CACHE.map(url => new Request(url, { cache: 'reload' })));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', event => {

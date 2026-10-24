@@ -157,7 +157,7 @@ function showAppDialog(message, {
         <p style="${messageStyle}">${esc(message)}</p>
         <div style="display:flex; justify-content:center; gap:10px;">
           ${cancelLabel ? `<button id="btn-cancel-app-message" type="button" style="padding:10px 16px; border:0; border-radius:10px; background:#e2e8f0; color:#334155; font-weight:700;">${esc(cancelLabel)}</button>` : ''}
-          <button id="btn-close-app-message" type="button" style="padding:10px 16px; border:0; border-radius:10px; background:#256b45; color:#fff; font-weight:700;">${esc(actionLabel)}</button>
+          ${autoCloseMs > 0 ? '' : `<button id="btn-close-app-message" type="button" style="padding:10px 16px; border:0; border-radius:10px; background:#256b45; color:#fff; font-weight:700;">${esc(actionLabel)}</button>`}
         </div>
       </section><style>@keyframes internet-blink { 50% { opacity:.18; } }</style>
     </div>`);
@@ -166,10 +166,10 @@ function showAppDialog(message, {
     clearTimeout(appDialogTimer);
     dialog?.remove();
   };
-  document.querySelector('#btn-close-app-message').onclick = () => {
+  document.querySelector('#btn-close-app-message')?.addEventListener('click', () => {
     close();
     onAction?.();
-  };
+  });
   document.querySelector('#btn-cancel-app-message')?.addEventListener('click', () => {
     close();
     onCancel?.();
@@ -622,10 +622,22 @@ async function configureBluetoothPrinter() {
   });
   bluetoothDevice = device;
   try {
-    await connectBluetoothPrinter();
+    const characteristic = await connectBluetoothPrinter();
     savePrinter(device);
     sessionWithoutPrinter = false;
-    showToast(`ตั้งค่าเครื่องพิมพ์ ${device.name || 'Bluetooth Printer'} เรียบร้อยแล้ว`);
+    // ยืนยันว่าเชื่อมต่อและส่งข้อมูลถึงเครื่องได้จริงทันทีหลังเลือกเครื่องพิมพ์
+    await enqueuePrinterJob(async () => {
+      await waitForPrinterBufferClear();
+      await printReceiptESC_POS(characteristic, [
+        { text: 'เชื่อมต่อสำเร็จ', align: 'center', bold: true },
+        { text: 'ทดสอบพิมพ์', align: 'center', bold: true }
+      ], {
+        cutPaper: true,
+        chunkSize: RECEIPT_WRITE_CHUNK_SIZE,
+        forceWithResponse: false
+      });
+    });
+    showToast(`ตั้งค่าเครื่องพิมพ์ ${device.name || 'Bluetooth Printer'} และทดสอบพิมพ์เรียบร้อยแล้ว`);
   } catch (error) {
     forgetPrinter();
     throw new Error(`เชื่อมต่อเครื่องพิมพ์ไม่ได้: ${error.message}`);
@@ -1821,6 +1833,8 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#sales-report-print-dialog')?.remove();
   const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
   const canPrintSelectedReport = Boolean(getPrintReportSelection()[mode]);
+  // iOS/AirPrint ไม่มี Web Bluetooth จึงยังพิมพ์ผ่านเมนูระบบได้ตามปกติ
+  const printerOnlineForReport = !supportsBluetoothPrinting() || isPrinterOnline();
   const previewRows = lines.map(line => {
     if (line.inlineLeftText !== undefined || line.inlineRightText !== undefined) {
       const leftWeight = line.leftBold ? '700' : '400';
@@ -1847,7 +1861,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
           <div id="sales-report-print-paper" style="width:min(100%,920px); min-height:100%; margin:0 auto; padding:clamp(20px,4vw,42px); box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.55; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
         </main>
         ${canPrintSelectedReport ? `<footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
-          <button id="btn-confirm-sales-report-print" type="button" style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
+          <button id="btn-confirm-sales-report-print" type="button" ${printerOnlineForReport ? '' : 'disabled aria-disabled="true"'} style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:${printerOnlineForReport ? '#0284c7' : '#94a3b8'}; color:#fff; font-weight:700; cursor:${printerOnlineForReport ? 'pointer' : 'not-allowed'};">${printerOnlineForReport ? '🖨️ พิมพ์' : '🖨️ เครื่องพิมพ์ Offline'}</button>
         </footer>` : ''}
       </section>
     </div>`);
@@ -1856,6 +1870,10 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#btn-close-sales-report-print').onclick = () => dialog.remove();
   document.querySelector('#btn-confirm-sales-report-print')?.addEventListener('click', async event => {
     const button = event.currentTarget;
+    if (supportsBluetoothPrinting() && !isPrinterOnline()) {
+      showAppDialog('เครื่องพิมพ์ Offline กรุณาเชื่อมต่อเครื่องพิมพ์ก่อนพิมพ์รายงาน', { title: 'เครื่องพิมพ์ Offline' });
+      return;
+    }
     button.disabled = true;
     try {
       if (!supportsBluetoothPrinting()) {

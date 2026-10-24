@@ -120,7 +120,7 @@ function getMemberLoginDisplay(member = {}, fallbackPhone = '', maskPhone = fals
 
 let appDialogTimer = null;
 function showAppDialog(message, {
-  title = 'แจ้งเตือน',
+  title = '',
   autoCloseMs = 0,
   actionLabel = 'ปิด',
   cancelLabel = '',
@@ -129,14 +129,11 @@ function showAppDialog(message, {
 } = {}) {
   clearTimeout(appDialogTimer);
   document.querySelector('#app-message-dialog')?.remove();
-  const isInternetError = String(message).includes('เชื่อมต่อ Internet ไม่ได้');
-  const messageStyle = isInternetError
-    ? 'margin:0 0 18px; white-space:pre-line; line-height:1.55; color:#dc2626; font-weight:700; animation:internet-blink .85s step-end infinite;'
-    : 'margin:0 0 18px; white-space:pre-line; line-height:1.55; color:#475569;';
+  const messageStyle = 'margin:0 0 18px; white-space:pre-line; line-height:1.6; color:#111827; font-size:1.05rem; font-weight:600;';
   document.body.insertAdjacentHTML('beforeend', `
     <div id="app-message-dialog" style="position:fixed; inset:0; z-index:50000; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.55);">
       <section role="dialog" aria-modal="true" aria-labelledby="app-message-title" style="width:min(100%,360px); padding:22px; border-radius:18px; background:#fff; color:#1e293b; box-shadow:0 20px 45px rgba(0,0,0,.28); text-align:center;">
-        <h2 id="app-message-title" style="margin:0 0 10px; color:#194832; font-size:1.2rem;">${esc(title)}</h2>
+        ${title && title !== 'แจ้งเตือน' ? `<h2 id="app-message-title" style="margin:0 0 10px; color:#194832; font-size:1.2rem;">${esc(title)}</h2>` : ''}
         <p style="${messageStyle}">${esc(message)}</p>
         <div style="display:flex; justify-content:center; gap:10px;">
           ${cancelLabel ? `<button id="btn-cancel-app-message" type="button" style="padding:10px 16px; border:0; border-radius:10px; background:#e2e8f0; color:#334155; font-weight:700;">${esc(cancelLabel)}</button>` : ''}
@@ -174,12 +171,12 @@ function showConfirmDialog(message, {
   }));
 }
 
-function showToast(msg, title = 'แจ้งเตือน') {
+function showToast(msg, title = '') {
   showAppDialog(msg, { title, autoCloseMs: 3000 });
 }
 
 // เปลี่ยน alert เดิมทั้งหมดให้เป็น Dialog ของแอป เพื่อไม่ให้ข้อความหายเร็วหรือถูกเบราว์เซอร์ปิดกั้น
-window.alert = message => showAppDialog(message, { title: 'แจ้งเตือน' });
+window.alert = message => showAppDialog(message);
 function releaseStaffUsageOnDisconnect() {
   const phone = adminSession?.username;
   if (phone && window.staffApi?.releaseUserUsage) {
@@ -837,15 +834,19 @@ function getNetReceiptPrice(data) {
 }
 
 function getReceiptUsageSummary(data) {
+  if (data.limitAll) {
+    return {
+      usedAfter: Number(data.usedCount ?? 0) + 1,
+      remainingText: 'ไม่จำกัด'
+    };
+  }
   const periodLabels = ['วัน', 'เดือน', 'ปี'];
   const periodLabel = periodLabels[Number(data.limitType ?? 0)] || 'วัน';
   const usedAfter = Number(data.usedCount ?? 0) + 1;
   const periodUsedAfter = Number(data.periodUsed ?? 0) + 1;
   const periodLimit = Number(data.quotaPerPeriod ?? 0);
   const periodRemaining = periodLimit > 0 ? Math.max(0, periodLimit - periodUsedAfter) : null;
-  const totalRemaining = data.limitAll
-    ? null
-    : Math.max(0, Number(data.allLimit ?? 0) - usedAfter);
+  const totalRemaining = Math.max(0, Number(data.allLimit ?? 0) - usedAfter);
   const actualRemaining = periodRemaining == null
     ? totalRemaining
     : totalRemaining == null
@@ -854,7 +855,7 @@ function getReceiptUsageSummary(data) {
 
   return {
     usedAfter,
-    remainingText: actualRemaining == null ? 'ไม่กำหนด' : `${actualRemaining} สิทธิ์/${periodLabel}`
+    remainingText: actualRemaining == null ? 'ไม่จำกัด' : `${actualRemaining} สิทธิ์/${periodLabel}`
   };
 }
 
@@ -1723,11 +1724,10 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 
   if (mode !== 'summary') lines.push({ text: '--------------------------------' });
   lines.push({
-    leftText: `รวมจำนวน ${bills.length} ${getSalesReportCountUnit(bills)}`,
+    leftText: `รวม ${bills.length} ${getSalesReportCountUnit(bills)}`,
     rightText: `฿${money(total)}`,
     bold: true,
-    doubleUnderline: true,
-    ...(mode === 'summary' ? {} : { fontSize: 30, emphasis: true })
+    doubleUnderline: true
   });
   return lines;
 }
@@ -2038,6 +2038,7 @@ function renderClientDetailPage(data) {
               ? `<div style="margin-top:0.2rem; color:#047857; font-weight:800; font-size:1.38rem; line-height:1.3;">จำนวนเงิน ฿${formatReceiptPrice(data.productPrice)}</div>`
               : `<div style="margin-top:0.14rem; color:#dc2626; font-weight:800; font-size:1.18rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
           </div>
+          ${hasCouponOrProduct ? renderReceiptPreviewCards(data) : ''}
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
               hasCouponOrProduct

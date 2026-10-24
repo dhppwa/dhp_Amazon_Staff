@@ -14,6 +14,26 @@ let scanWithoutPrinter = false;
 let sessionWithoutPrinter = false;
 const ADMIN_CREDENTIALS_KEY = 'amazonStaffRememberedAdminCredentials';
 
+function isPrinterOnline() {
+  return Boolean(bluetoothCharacteristic && bluetoothDevice?.gatt?.connected);
+}
+
+function printerConnectionLabel() {
+  return isPrinterOnline() ? '🖨️ Online' : '🖨️ Offline';
+}
+
+function refreshPrinterConnectionIndicators() {
+  const online = isPrinterOnline();
+  document.querySelectorAll('[data-printer-connection-status]').forEach(indicator => {
+    indicator.textContent = printerConnectionLabel();
+    indicator.title = online ? 'เครื่องพิมพ์เชื่อมต่ออยู่' : 'เครื่องพิมพ์ยังไม่เชื่อมต่อ';
+    indicator.setAttribute('aria-label', indicator.title);
+    indicator.style.color = online ? '#ffffff' : '#64748b';
+    indicator.style.background = online ? '#059669' : '#e2e8f0';
+    indicator.style.borderColor = online ? '#059669' : '#cbd5e1';
+  });
+}
+
 // Safari/iOS บางบริบท (เช่น PWA/Private Browsing) อาจไม่อนุญาต localStorage
 // การจำรหัสจึงต้องไม่ทำให้การยืนยันสิทธิ์ผู้ดูแลล้มเหลว
 function getSavedDeviceValue(key) {
@@ -283,8 +303,9 @@ function createToastEl() {
 const PRINT_WIDTH_DOTS = 384;
 const PRINTER_SETTINGS_KEY = 'staff-selected-bluetooth-printer';
 const PRINT_RECEIPT_MODE_KEY = 'staff-print-receipt-mode';
-const PRINT_RECEIPT_MODE_BOTH = 'customer-and-merchant';
 const PRINT_RECEIPT_MODE_MERCHANT_ONLY = 'merchant-only';
+const PRINT_RECEIPT_SELECTION_KEY = 'staff-print-receipt-selection';
+const PRINT_REPORT_SELECTION_KEY = 'staff-print-report-selection';
 const PRINTER_SERVICES = [
   '000018f0-0000-1000-8000-00805f9b34fb',
   '0000ff00-0000-1000-8000-00805f9b34fb',
@@ -331,15 +352,40 @@ function clearSavedPrinter() {
   forgetPrinter();
 }
 
-function getPrintReceiptMode() {
+function readPrintSelection(key, defaults) {
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || 'null');
+    return value && typeof value === 'object' ? { ...defaults, ...value } : { ...defaults };
+  } catch (error) {
+    return { ...defaults };
+  }
+}
+
+function getPrintReceiptSelection() {
+  const saved = localStorage.getItem(PRINT_RECEIPT_SELECTION_KEY);
+  if (saved) return readPrintSelection(PRINT_RECEIPT_SELECTION_KEY, { customer: true, merchant: true });
+  // ย้ายการตั้งค่าแบบเดิมให้ใช้ต่อได้โดยไม่เปลี่ยนพฤติกรรมของผู้ใช้เดิม
   return localStorage.getItem(PRINT_RECEIPT_MODE_KEY) === PRINT_RECEIPT_MODE_MERCHANT_ONLY
-    ? PRINT_RECEIPT_MODE_MERCHANT_ONLY
-    : PRINT_RECEIPT_MODE_BOTH;
+    ? { customer: false, merchant: true }
+    : { customer: true, merchant: true };
+}
+
+function getPrintReportSelection() {
+  return readPrintSelection(PRINT_REPORT_SELECTION_KEY, { summary: true, detail: false });
+}
+
+function getSelectedReceiptBlocks(receipts) {
+  const selected = getPrintReceiptSelection();
+  return [
+    ...(selected.customer ? [receipts.original] : []),
+    ...(selected.merchant ? [receipts.copy] : [])
+  ];
 }
 
 function openPrintReceiptSettings() {
   document.querySelector('#print-receipt-settings-dialog')?.remove();
-  const selectedMode = getPrintReceiptMode();
+  const receiptSelection = getPrintReceiptSelection();
+  const reportSelection = getPrintReportSelection();
   document.body.insertAdjacentHTML('beforeend', `
     <div id="print-receipt-settings-dialog" style="position:fixed; inset:0; z-index:20000; display:grid; place-items:center; padding:20px; background:rgba(15,23,42,.55);">
       <section role="dialog" aria-modal="true" aria-labelledby="print-receipt-settings-title" style="width:min(100%,440px); padding:22px; border-radius:16px; background:#fff; color:#1e293b; box-shadow:0 18px 42px rgba(0,0,0,.25);">
@@ -347,12 +393,23 @@ function openPrintReceiptSettings() {
         <fieldset style="margin:0; padding:14px; border:1px solid #cbd5e1; border-radius:10px;">
           <legend style="padding:0 6px; font-weight:bold; color:#475569;">รูปแบบใบเสร็จ</legend>
           <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
-            <input type="radio" name="print-receipt-mode" value="${PRINT_RECEIPT_MODE_BOTH}" ${selectedMode === PRINT_RECEIPT_MODE_BOTH ? 'checked' : ''} style="margin-top:4px;">
-            <span>พิมพ์บิลลูกค้า + ร้านค้า</span>
+            <input id="print-receipt-customer" type="checkbox" ${receiptSelection.customer ? 'checked' : ''} style="margin-top:4px;">
+            <span>บิลลูกค้า</span>
           </label>
           <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
-            <input type="radio" name="print-receipt-mode" value="${PRINT_RECEIPT_MODE_MERCHANT_ONLY}" ${selectedMode === PRINT_RECEIPT_MODE_MERCHANT_ONLY ? 'checked' : ''} style="margin-top:4px;">
-            <span>พิมพ์เฉพาะร้านค้า</span>
+            <input id="print-receipt-merchant" type="checkbox" ${receiptSelection.merchant ? 'checked' : ''} style="margin-top:4px;">
+            <span>บิลร้านค้า</span>
+          </label>
+        </fieldset>
+        <fieldset style="margin:14px 0 0; padding:14px; border:1px solid #cbd5e1; border-radius:10px;">
+          <legend style="padding:0 6px; font-weight:bold; color:#475569;">รูปแบบรายงาน</legend>
+          <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
+            <input id="print-report-summary" type="checkbox" ${reportSelection.summary ? 'checked' : ''} style="margin-top:4px;">
+            <span>แบบสรุป</span>
+          </label>
+          <label style="display:flex; align-items:flex-start; gap:10px; padding:9px 4px; cursor:pointer; line-height:1.45;">
+            <input id="print-report-detail" type="checkbox" ${reportSelection.detail ? 'checked' : ''} style="margin-top:4px;">
+            <span>แบบละเอียด</span>
           </label>
         </fieldset>
         <div style="display:flex; justify-content:flex-end; gap:8px; margin-top:18px;">
@@ -365,8 +422,24 @@ function openPrintReceiptSettings() {
   const dialog = document.querySelector('#print-receipt-settings-dialog');
   document.querySelector('#btn-cancel-print-receipt-settings').onclick = () => dialog.remove();
   document.querySelector('#btn-save-print-receipt-settings').onclick = () => {
-    const mode = document.querySelector('input[name="print-receipt-mode"]:checked')?.value || PRINT_RECEIPT_MODE_BOTH;
-    localStorage.setItem(PRINT_RECEIPT_MODE_KEY, mode);
+    const receipts = {
+      customer: Boolean(document.querySelector('#print-receipt-customer')?.checked),
+      merchant: Boolean(document.querySelector('#print-receipt-merchant')?.checked)
+    };
+    const reports = {
+      summary: Boolean(document.querySelector('#print-report-summary')?.checked),
+      detail: Boolean(document.querySelector('#print-report-detail')?.checked)
+    };
+    if (!receipts.customer && !receipts.merchant) {
+      showAppDialog('กรุณาเลือกรูปแบบใบเสร็จอย่างน้อย 1 รายการ');
+      return;
+    }
+    if (!reports.summary && !reports.detail) {
+      showAppDialog('กรุณาเลือกรูปแบบรายงานอย่างน้อย 1 รายการ');
+      return;
+    }
+    localStorage.setItem(PRINT_RECEIPT_SELECTION_KEY, JSON.stringify(receipts));
+    localStorage.setItem(PRINT_REPORT_SELECTION_KEY, JSON.stringify(reports));
     dialog.remove();
     showToast('บันทึกการตั้งค่าการพิมพ์เรียบร้อยแล้ว');
   };
@@ -449,6 +522,7 @@ function forgetPrinter() {
   try { bluetoothDevice?.gatt?.disconnect(); } catch (e) {}
   bluetoothDevice = null;
   bluetoothCharacteristic = null;
+  refreshPrinterConnectionIndicators();
 }
 window.forgetPrinter = forgetPrinter;
 
@@ -456,6 +530,7 @@ window.forgetPrinter = forgetPrinter;
 async function disconnectBluetoothPrinter() {
   const device = bluetoothDevice;
   bluetoothCharacteristic = null;
+  refreshPrinterConnectionIndicators();
   try {
     if (device?.gatt?.connected) {
       device.gatt.disconnect();
@@ -496,9 +571,10 @@ async function connectBluetoothPrinter({ forceReconnect = false, retryCount = 1 
     if (!bluetoothDevice) throw new Error('ไม่พบเครื่องพิมพ์ที่ตั้งค่าไว้');
   }
 
-  bluetoothDevice.addEventListener('gattserverdisconnected', () => {
+  bluetoothDevice.ongattserverdisconnected = () => {
     bluetoothCharacteristic = null;
-  });
+    refreshPrinterConnectionIndicators();
+  };
 
   let lastError;
   // เครื่องที่เพิ่งเปิดอาจต้องใช้เวลาประกาศตัวใน Bluetooth: รอแล้วรีเช็กเงียบ ๆ
@@ -513,6 +589,7 @@ async function connectBluetoothPrinter({ forceReconnect = false, retryCount = 1 
         const writable = chars.find(c => c.properties.writeWithoutResponse || c.properties.write);
         if (writable) {
           bluetoothCharacteristic = writable;
+          refreshPrinterConnectionIndicators();
           return writable;
         }
       }
@@ -520,6 +597,7 @@ async function connectBluetoothPrinter({ forceReconnect = false, retryCount = 1 
     } catch (err) {
       lastError = err;
       bluetoothCharacteristic = null;
+      refreshPrinterConnectionIndicators();
       try { bluetoothDevice?.gatt?.disconnect(); } catch (e) {}
       if (attempt === retryCount) break;
 
@@ -915,9 +993,7 @@ function createReceiptLines(data, billNo) {
 
 function renderReceiptPreviewCards(data) {
   const receipts = createReceiptLines(data, 'PREVIEW');
-  const blocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY
-    ? [receipts.copy]
-    : [receipts.original, receipts.copy];
+  const blocks = getSelectedReceiptBlocks(receipts);
 
   const renderLine = line => {
     if (line.isReceiptHeader) {
@@ -1128,9 +1204,7 @@ async function runPrint(data, billNo) {
     await waitForPrinterBufferClear();
     const receipts = createReceiptLines(data, billNo);
 
-    const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
-      ? [receipts.original, receipts.copy]
-      : [receipts.copy];
+    const receiptBlocks = getSelectedReceiptBlocks(receipts);
 
     // แต่ละ block จบด้วยคำสั่งตัดกระดาษหนึ่งครั้ง:
     // ลูกค้า + ร้านค้า = 2 ใบ / เฉพาะร้านค้า = 1 ใบ
@@ -1169,9 +1243,7 @@ async function printTestReceipt() {
         allLimit: 1
       };
       const receipt = createReceiptLines(testData, `TEST-${Date.now().toString().slice(-6)}`);
-      const receiptBlocks = getPrintReceiptMode() === PRINT_RECEIPT_MODE_BOTH
-        ? [receipt.original, receipt.copy]
-        : [receipt.copy];
+      const receiptBlocks = getSelectedReceiptBlocks(receipt);
       for (let index = 0; index < receiptBlocks.length; index += 1) {
         const receiptLines = receiptBlocks[index];
         await printReceiptESC_POS(characteristic, receiptLines, {
@@ -1197,6 +1269,7 @@ async function startScanner({ allowWithoutPrinter = false } = {}) {
   const manageButton = document.querySelector('#btn-manage-member');
   const testPrintButton = document.querySelector('#btn-test-print');
   const salesReportButton = document.querySelector('#btn-sales-report');
+  const printerStatus = document.querySelector('#printer-connection-main');
   const scannerStatus = document.querySelector('#scanner-status');
   if (!readerEl) return;
 
@@ -1258,6 +1331,7 @@ async function startScanner({ allowWithoutPrinter = false } = {}) {
   if (manageButton) manageButton.style.display = 'none';
   if (testPrintButton) testPrintButton.style.display = 'none';
   if (salesReportButton) salesReportButton.style.display = 'none';
+  if (printerStatus) printerStatus.style.display = 'none';
   if (scannerStatus) scannerStatus.textContent = '';
   if (btn) {
     btn.textContent = '❌ ปิดกล้องสแกน';
@@ -1338,6 +1412,7 @@ async function stopScanner() {
   const manageButton = document.querySelector('#btn-manage-member');
   const testPrintButton = document.querySelector('#btn-test-print');
   const salesReportButton = document.querySelector('#btn-sales-report');
+  const printerStatus = document.querySelector('#printer-connection-main');
   const scannerStatus = document.querySelector('#scanner-status');
 
   if (html5QrCode && html5QrCode.isScanning) {
@@ -1350,6 +1425,8 @@ async function stopScanner() {
   if (manageButton) manageButton.style.display = 'flex';
   if (testPrintButton) testPrintButton.style.display = 'block';
   if (salesReportButton) salesReportButton.style.display = 'block';
+  if (printerStatus) printerStatus.style.display = 'inline-flex';
+  refreshPrinterConnectionIndicators();
   if (scannerStatus) scannerStatus.textContent = '';
   if (btn) {
     btn.textContent = '📷 เปิดกล้องสแกน QR Code';
@@ -1447,8 +1524,31 @@ function supportsBluetoothPrinting() {
 function renderAirPrintReceipt(data, billNo) {
   const printedAt = new Date().toLocaleString('th-TH');
   const usage = getReceiptUsageSummary(data);
-  const isMerchantOnly = getPrintReceiptMode() === PRINT_RECEIPT_MODE_MERCHANT_ONLY;
+  const receiptSelection = getPrintReceiptSelection();
   const isCustomAmountProduct = Boolean(data.isCustomAmount) || /^C-\d+$/i.test(String(data.productId || ''));
+  const selectedCopies = [
+    ...(receiptSelection.customer ? [false] : []),
+    ...(receiptSelection.merchant ? [true] : [])
+  ];
+  const renderReceiptCopy = isMerchantCopy => `
+    <section class="airprint-copy" style="${isMerchantCopy && receiptSelection.customer ? 'break-before:page; page-break-before:always; margin-top:18px;' : ''}">
+      <h1 style="text-align:${isMerchantCopy ? 'left' : 'center'};">D Coupon</h1>
+      ${isMerchantCopy ? '<p style="margin-top:4px; text-align:right; font-weight:400; line-height:1.5;">(ร้านค้าเก็บ)</p>' : ''}
+      <p style="text-align:center;">ใบเสร็จรับสิทธิ์คูปอง</p>
+      <hr>
+      <p class="airprint-date">${esc(printedAt)}</p>
+      <p class="airprint-row"><span>เลขที่บิล: ${esc(billNo)}</span><span>${esc(data.address)}</span></p>
+      <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
+      <hr>
+      ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : '<p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>'}
+      <p class="airprint-product airprint-row"><span>${esc(data.productName)}${isCustomAmountProduct ? '' : ' 1 แก้ว'}</span><span style="font-weight:400;">${isMerchantCopy ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
+      ${isMerchantCopy && !isCustomAmountProduct ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
+      ${isMerchantCopy ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
+      ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
+      ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
+      <hr>
+      ${isMerchantCopy ? '' : '<p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>'}
+    </section>`;
   app.innerHTML = `
     <div class="staff-page airprint-page">
       <div class="staff-page-header">
@@ -1456,22 +1556,7 @@ function renderAirPrintReceipt(data, billNo) {
         <h3>ใบเสร็จรับสิทธิ์</h3>
       </div>
       <main id="airprint-receipt" class="airprint-receipt">
-        <h1 style="text-align:${isMerchantOnly ? 'left' : 'center'};">D Coupon</h1>
-        ${isMerchantOnly ? '<p style="margin-top:4px; text-align:right; font-weight:400; line-height:1.5;">(ร้านค้าเก็บ)</p>' : ''}
-        <p>ใบเสร็จรับสิทธิ์คูปอง</p>
-        <hr>
-        <p class="airprint-date">${esc(printedAt)}</p>
-        <p class="airprint-row"><span>เลขที่บิล: ${esc(billNo)}</span><span>${esc(data.address)}</span></p>
-        <p class="airprint-row"><span>${esc(formatCustomerName(data.name))}</span><span>${esc(maskPhoneNumber(data.phone))}</span></p>
-        <hr>
-        ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : '<p>จำนวน: 1 สิทธิ์ (ใช้สิทธิ์ฟรี)</p>'}
-        <p class="airprint-product airprint-row"><span>${esc(data.productName)}${isCustomAmountProduct ? '' : ' 1 แก้ว'}</span><span style="font-weight:400;">${isMerchantOnly ? `${formatReceiptPrice(data.productPrice)} บาท` : 'FREE'}</span></p>
-        ${isMerchantOnly && !isCustomAmountProduct ? `<p class="airprint-row"><span>dis</span><strong>${formatDiscountPercent(data.discount)}%</strong></p>` : ''}
-        ${isMerchantOnly ? `<p class="airprint-row" style="font-weight:700;"><span>ราคาสุทธิ</span><span>${formatReceiptPrice(getNetReceiptPrice(data))} บาท</span></p>` : ''}
-        ${/^C-\d+$/i.test(String(data.productId || '')) ? '' : `<p>ใช้ไปแล้ว: ${usage.usedAfter} สิทธิ์</p><p>คงเหลือ: ${esc(usage.remainingText)}</p>`}
-        ${data.project && data.project !== '-' ? `<p>หมายเหตุ: ${esc(data.project)}</p>` : ''}
-        <hr>
-        ${isMerchantOnly ? '' : '<p class="airprint-thanks">ขอบคุณที่ใช้บริการ</p>'}
+        ${selectedCopies.map(renderReceiptCopy).join('')}
       </main>
       <div class="airprint-actions">
         <p>เลือกเครื่องพิมพ์ AirPrint จากเมนูพิมพ์ของ iPhone/iPad</p>
@@ -1735,6 +1820,7 @@ function buildSalesReportPrintLines(startDate, endDate, mode, bills) {
 function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#sales-report-print-dialog')?.remove();
   const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
+  const canPrintSelectedReport = Boolean(getPrintReportSelection()[mode]);
   const previewRows = lines.map(line => {
     if (line.inlineLeftText !== undefined || line.inlineRightText !== undefined) {
       const leftWeight = line.leftBold ? '700' : '400';
@@ -1760,15 +1846,15 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
         <main style="flex:1; min-height:0; width:100%; overflow:auto; padding:clamp(18px,3vw,36px) clamp(16px,6vw,96px) 110px; box-sizing:border-box;">
           <div id="sales-report-print-paper" style="width:min(100%,920px); min-height:100%; margin:0 auto; padding:clamp(20px,4vw,42px); box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.55; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
         </main>
-        <footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
+        ${canPrintSelectedReport ? `<footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
           <button id="btn-confirm-sales-report-print" type="button" style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:#0284c7; color:#fff; font-weight:700;">🖨️ พิมพ์</button>
-        </footer>
+        </footer>` : ''}
       </section>
     </div>`);
 
   const dialog = document.querySelector('#sales-report-print-dialog');
   document.querySelector('#btn-close-sales-report-print').onclick = () => dialog.remove();
-  document.querySelector('#btn-confirm-sales-report-print').onclick = async event => {
+  document.querySelector('#btn-confirm-sales-report-print')?.addEventListener('click', async event => {
     const button = event.currentTarget;
     button.disabled = true;
     try {
@@ -1800,7 +1886,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     } finally {
       button.disabled = false;
     }
-  };
+  });
 }
 
 async function openSalesReport(startDateValue = getLocalDateValue(), endDateValue = startDateValue) {
@@ -1810,6 +1896,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       <div style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:.5rem; z-index:10;">
         <button class="back" id="btn-close-sales-report" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
         <h3 style="margin:0; font-size:1.1rem; color:#0284c7;">📊 รายงานการขาย</h3>
+        <span id="printer-connection-report" data-printer-connection-status style="margin-left:auto; display:inline-flex; align-items:center; padding:5px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
       </div>
       <main style="flex:1; max-width:1000px; width:100%; margin:0 auto; padding:20px; box-sizing:border-box;">
         <section style="padding:16px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,.05);">
@@ -1843,6 +1930,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       </main>
     </div>`;
 
+  refreshPrinterConnectionIndicators();
   document.querySelector('#btn-close-sales-report').onclick = renderMainUI;
   let selectedStartDate = startDateValue;
   let selectedEndDate = endDateValue;
@@ -1930,7 +2018,9 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
     const mode = document.querySelector('input[name="sales-report-mode"]:checked')?.value || 'summary';
     showSalesReportPrintPreview(selectedStartDate, selectedEndDate, mode, reportBills);
   };
-  document.querySelectorAll('input[name="sales-report-mode"]').forEach(field => field.onchange = renderReport);
+  document.querySelectorAll('input[name="sales-report-mode"]').forEach(field => field.onchange = () => {
+    renderReport();
+  });
   await loadReport();
 }
 
@@ -2480,8 +2570,12 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
         try {
           if (window.staffApi?.resetPassword) {
             await window.staffApi.resetPassword(record.id, '1234');
-          } else if (window.staffApi?.saveHouseData) {
-            await window.staffApi.saveHouseData({ id: record.id, password: '1234' });
+          } else {
+            throw new Error('ไม่พบฟังก์ชันรีเซ็ตรหัสผ่าน');
+          }
+          // หากกำลังรีเซ็ตบัญชีแอดมินที่ล็อกอินอยู่ ให้ไม่เติมรหัสเก่าจากช่องจำรหัสอีก
+          if (String(adminSession?.id || '') === String(record.id)) {
+            removeSavedDeviceValue(ADMIN_CREDENTIALS_KEY);
           }
           showToast('รีเซ็ตรหัสผ่านเป็น 1234 เรียบร้อยแล้ว');
         } catch (err) {
@@ -2845,6 +2939,65 @@ function editHouseRecord(id) {
   openHouseRecordModal('✏️ แก้ไขข้อมูลสมาชิก', true, record);
 }
 
+function openForcedAdminPasswordChange(sessionData) {
+  document.querySelector('#force-admin-password-dialog')?.remove();
+  document.body.insertAdjacentHTML('beforeend', `
+    <div id="force-admin-password-dialog" style="position:fixed; inset:0; z-index:30000; display:grid; place-items:center; padding:20px; background:rgba(20,40,29,.62);">
+      <form id="force-admin-password-form" style="width:min(100%,360px); display:grid; gap:14px; padding:22px; border-radius:18px; background:#fffaf4; box-shadow:0 20px 45px rgba(0,0,0,.28);">
+        <h2 style="margin:0; color:#194832; font-size:1.2rem;">เปลี่ยนรหัสผ่านเข้าใช้งานครั้งแรก</h2>
+        <p style="margin:0; color:#475569; line-height:1.55;">บัญชีนี้ใช้รหัสเริ่มต้น 1234 กรุณาตั้งรหัสผ่านใหม่ก่อนใช้งาน</p>
+        <label style="display:grid; gap:6px; color:#2c241d;">รหัสผ่านใหม่
+          <input name="newPassword" type="password" minlength="4" autocomplete="new-password" required style="width:100%; box-sizing:border-box;">
+        </label>
+        <label style="display:grid; gap:6px; color:#2c241d;">ยืนยันรหัสผ่านใหม่
+          <input name="confirmPassword" type="password" minlength="4" autocomplete="new-password" required style="width:100%; box-sizing:border-box;">
+        </label>
+        <p id="force-admin-password-error" role="alert" style="display:none; margin:0; color:#b63f35; font-size:.88rem;"></p>
+        <button type="submit" style="padding:10px 14px; border:0; border-radius:10px; background:#256b45; color:#fff; font-weight:700;">ยืนยันเปลี่ยนรหัสผ่าน</button>
+      </form>
+    </div>`);
+
+  const dialog = document.querySelector('#force-admin-password-dialog');
+  document.querySelector('#force-admin-password-form').onsubmit = async event => {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const errorEl = document.querySelector('#force-admin-password-error');
+    const button = form.querySelector('button[type="submit"]');
+    const { newPassword, confirmPassword } = Object.fromEntries(new FormData(form));
+    const password = String(newPassword || '').trim();
+    if (password === '1234') {
+      errorEl.textContent = 'กรุณาตั้งรหัสผ่านใหม่ที่ไม่ใช่ 1234';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (password !== String(confirmPassword || '').trim()) {
+      errorEl.textContent = 'รหัสผ่านใหม่และการยืนยันไม่ตรงกัน';
+      errorEl.style.display = 'block';
+      return;
+    }
+    button.disabled = true;
+    button.textContent = 'กำลังบันทึก...';
+    errorEl.style.display = 'none';
+    try {
+      await window.staffApi.changeAdminPassword(sessionData.id, password);
+      await window.staffApi.releaseUserUsage(sessionData.phone || sessionData.username);
+      adminSession = null;
+      removeSavedDeviceValue(ADMIN_CREDENTIALS_KEY);
+      dialog.remove();
+      showAppDialog('เปลี่ยนรหัสผ่านสำเร็จ กรุณาเข้าสู่ระบบด้วยรหัสผ่านใหม่', {
+        title: 'เปลี่ยนรหัสผ่านสำเร็จ',
+        actionLabel: 'เข้าสู่ระบบ',
+        onAction: () => openAdminLoginDialog()
+      });
+    } catch (error) {
+      errorEl.textContent = error.message || 'ไม่สามารถเปลี่ยนรหัสผ่านได้';
+      errorEl.style.display = 'block';
+      button.disabled = false;
+      button.textContent = 'ยืนยันเปลี่ยนรหัสผ่าน';
+    }
+  };
+}
+
 async function openAdminLoginDialog() {
   try {
     const hasAdmin = await window.staffApi.hasAdminUser();
@@ -2924,6 +3077,12 @@ async function openAdminLoginDialog() {
       const username = String(formData.get('username') || '').trim();
       const password = String(formData.get('password') || '');
       adminSession = await window.staffApi.verifyAdminCredentials(username, password);
+      if (adminSession.isDefaultPassword) {
+        removeSavedDeviceValue(ADMIN_CREDENTIALS_KEY);
+        dialog.remove();
+        openForcedAdminPasswordChange(adminSession);
+        return;
+      }
       if (formData.get('rememberPassword')) {
         setSavedDeviceValue(ADMIN_CREDENTIALS_KEY, JSON.stringify({ username, password }));
       } else {
@@ -2947,6 +3106,7 @@ function renderMainUI() {
   app.innerHTML = `
     <div class="shell staff-main-shell" style="max-width: 480px; margin: 0 auto; padding: 1rem; font-family: sans-serif; position: relative; min-height: 80vh;">
       <header style="text-align: center; margin-bottom: 1.5rem;">
+        <span id="printer-connection-main" data-printer-connection-status style="position:absolute; top:calc(16px + env(safe-area-inset-top, 0px)); right:calc(16px + env(safe-area-inset-right, 0px)); display:inline-flex; align-items:center; padding:5px 8px; border:1px solid ${isPrinterOnline() ? '#059669' : '#cbd5e1'}; border-radius:999px; background:${isPrinterOnline() ? '#059669' : '#e2e8f0'}; color:${isPrinterOnline() ? '#ffffff' : '#64748b'}; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
         <img 
           src="public/assets/image/icon-512.png?v=18" 
           alt="D Coupon Shop Logo" 
@@ -3030,6 +3190,8 @@ function renderMainUI() {
 
   document.querySelector('#btn-test-print').onclick = printTestReceipt;
   document.querySelector('#btn-sales-report').onclick = () => openSalesReport();
+
+  refreshPrinterConnectionIndicators();
 
   setTimeout(showInstallGuide, 400);
   if (!printerStartupChecked) {

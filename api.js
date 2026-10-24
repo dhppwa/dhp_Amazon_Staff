@@ -107,9 +107,9 @@ async function updateStaffUsage(phone, isUse, { keepalive = false } = {}) {
  * แผนที่รายการสินค้า (Product Map)
  */
 const PRODUCT_MAP = {
-  '1': { name: 'แบล็คคอฟฟี (เย็น)', detail: 'เย็น มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
-  '2': { name: 'เอสเปรสโซ (เย็น)', detail: 'เย็น มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
-  '3': { name: 'ชานม (เย็น)', detail: 'เย็น มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 }
+  '1': { name: 'แบล็คคอฟฟี (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
+  '2': { name: 'เอสเปรสโซ (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
+  '3': { name: 'ชานม (เย็น)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 }
 };
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
@@ -124,6 +124,8 @@ const getCustomAmountProduct = productId => {
 const getProductDefinition = productId => PRODUCT_MAP[productId] || getCustomAmountProduct(productId);
 const getVisibleProductName = (storedName, product) => {
   const name = cleanString(storedName);
+  // รายการปกติใช้ชื่อจากแผนที่กลางเสมอ เพื่อให้ทุกหน้ามีคำว่า (เย็น) เหมือนกัน
+  if (product && !product.isCustomAmount) return product.name;
   if (!name || /^สินค้า\s*รหัส\s*/i.test(name)) return product?.name || 'รายการสินค้า';
   return name;
 };
@@ -162,7 +164,7 @@ window.staffApi = {
   async verifyAdminCredentials(username, password) {
     const supabase = getSupabase();
     const user = cleanString(username);
-    const pass = String(password ?? '');
+    const pass = String(password ?? '').trim();
 
     if (!user || !pass) throw new Error('กรุณากรอก User และ Password ให้ครบถ้วน');
 
@@ -171,12 +173,13 @@ window.staffApi = {
       { column: 'Username', value: user, loginType: 1 },
       { column: 'Email', value: user.toLowerCase(), loginType: 2 }
     ];
+    // ค้นหาบัญชีก่อน แล้วตรวจรหัสในแอปเหมือนฝั่ง Client
+    // เพื่อรองรับข้อมูลเก่าที่ PassWord เป็นค่าว่าง (ให้ใช้ 1234) และหลีกเลี่ยงปัญหาการเทียบค่าในฐานข้อมูล
     const results = await Promise.all(loginLookups.map(item => supabase
       .from('Cafe_Amazon_Promosion_House')
-      .select('ID, Name, Phone_No, Username, Email, LoginType, Access_Level')
+      .select('ID, Name, Phone_No, Username, Email, LoginType, Access_Level, PassWord')
       .eq(item.column, item.value)
       .eq('LoginType', item.loginType)
-      .eq('PassWord', pass)
       .eq('Access_Level', 2)
       .maybeSingle()));
     const failedResult = results.find(result => result.error);
@@ -184,11 +187,22 @@ window.staffApi = {
     const matches = results.map(result => result.data).filter(Boolean);
     if (matches.length > 1) throw new Error('พบข้อมูลเข้าสู่ระบบซ้ำ กรุณาติดต่อผู้ดูแลระบบ');
     const data = matches[0];
-    if (!data) throw new Error('User หรือ Password ไม่ถูกต้อง หรือบัญชีนี้ไม่มีสิทธิ์แอดมิน');
+    if (!data) throw new Error('ไม่พบ User นี้ หรือบัญชีนี้ไม่มีสิทธิ์แอดมิน');
+
+    const expectedPassword = String(data.PassWord ?? '').trim() || '1234';
+    if (pass !== expectedPassword) throw new Error('รหัสผ่านไม่ถูกต้อง');
 
     await updateStaffUsage(data.Phone_No, true);
 
-    return { id: data.ID, name: data.Name, username: data.Phone_No, phone: data.Phone_No, loginType: Number(data.LoginType ?? 0), accessLevel: data.Access_Level };
+    return {
+      id: data.ID,
+      name: data.Name,
+      username: data.Phone_No,
+      phone: data.Phone_No,
+      loginType: Number(data.LoginType ?? 0),
+      accessLevel: data.Access_Level,
+      isDefaultPassword: expectedPassword === '1234'
+    };
   },
 
   /**
@@ -736,15 +750,46 @@ async getHistory(userPhone) {
    */
   async resetPassword(id, newPassword = '1234') {
     const supabase = getSupabase();
-    const { error } = await supabase
+    const password = String(newPassword ?? '').trim();
+    if (!id || !password) throw new Error('ไม่พบข้อมูลสมาชิกหรือรหัสผ่านใหม่');
+
+    // ขอข้อมูลที่อัปเดตกลับมาเสมอ เพื่อไม่ให้แสดงว่าสำเร็จทั้งที่ policy/ID ทำให้ไม่มีแถวถูกแก้ไข
+    const { data, error } = await supabase
       .from('Cafe_Amazon_Promosion_House')
       .update({ 
-        PassWord: newPassword, // ใช้อักษรตัวพิมพ์เล็กให้ตรงกับใน Supabase
+        PassWord: password,
         UpdateDate: new Date().toISOString()
       })
-      .eq('ID', id);
+      .eq('ID', id)
+      .select('ID, PassWord')
+      .maybeSingle();
 
     if (error) throw new Error(`รีเซ็ตรหัสผ่านล้มเหลว: ${error.message}`);
+    if (!data?.ID || String(data.PassWord ?? '') !== password) {
+      throw new Error('ไม่พบข้อมูลที่รีเซ็ต หรือระบบไม่ยืนยันรหัสผ่านใหม่');
+    }
+    return { success: true };
+  },
+
+  /** เปลี่ยนรหัสผ่านหลังเข้าสู่ระบบครั้งแรกด้วยรหัสเริ่มต้น */
+  async changeAdminPassword(id, newPassword) {
+    const supabase = getSupabase();
+    const password = String(newPassword ?? '').trim();
+    if (!id || password.length < 4) throw new Error('รหัสผ่านต้องมีอย่างน้อย 4 ตัวอักษร');
+    if (password === '1234') throw new Error('กรุณาตั้งรหัสผ่านใหม่ที่ไม่ใช่ 1234');
+
+    const { data, error } = await supabase
+      .from('Cafe_Amazon_Promosion_House')
+      .update({ PassWord: password, UpdateDate: new Date().toISOString() })
+      .eq('ID', id)
+      .eq('Access_Level', 2)
+      .select('ID, PassWord')
+      .maybeSingle();
+
+    if (error) throw new Error(`เปลี่ยนรหัสผ่านล้มเหลว: ${error.message}`);
+    if (!data?.ID || String(data.PassWord ?? '') !== password) {
+      throw new Error('ระบบไม่ยืนยันการบันทึกรหัสผ่านใหม่');
+    }
     return { success: true };
   }
 };

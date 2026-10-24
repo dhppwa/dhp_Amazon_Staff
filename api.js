@@ -563,7 +563,12 @@ async getHistory(userPhone) {
       members = memberRows || [];
     }
     const memberMap = new Map(members.map(member => [String(member.ID), member]));
-    return (data || []).map(bill => {
+    // รายงานการขายเป็นยอดของลูกค้าจริงเท่านั้น: แสดงเฉพาะผู้ใช้ทั่วไปและ VIP
+    // จึงไม่นำบัญชีแอดมิน/ทดสอบระบบ (รวมถึงสมาชิกที่หาไม่พบ) มาคิดในรายงาน
+    return (data || []).filter(bill => {
+      const member = memberMap.get(String(bill.Cafe_Amazon_PK));
+      return [0, 1].includes(Number(member?.Access_Level));
+    }).map(bill => {
       const productId = normalizeProductId(bill.Product_Type);
       const product = PRODUCT_MAP[productId];
       const member = memberMap.get(String(bill.Cafe_Amazon_PK)) || {};

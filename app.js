@@ -2513,12 +2513,12 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                   <div id="h-limit-type-picker" style="position:relative; flex:0 0 auto;">
                     <input type="hidden" id="h-field-limitType" value="${Number(record?.limitType ?? 0)}" />
                     <button id="h-limit-type-toggle" type="button" aria-haspopup="listbox" aria-expanded="false" style="width:132px; height:100%; min-height:40px; display:flex; align-items:center; justify-content:space-between; gap:5px; padding:0.5rem 0.55rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#fff; color:#334155; box-sizing:border-box; font-size:0.8rem; font-weight:600; white-space:nowrap;">
-                      <span id="h-limit-type-label">${Number(record?.limitType ?? 0) === 1 ? 'เดือน หรือ ต่อเดือน' : Number(record?.limitType ?? 0) === 2 ? 'ปี หรือ ต่อปี' : 'วัน หรือ ต่อวัน'}</span><span aria-hidden="true" style="font-size:0.65rem;">▼</span>
+                      <span id="h-limit-type-label">${Number(record?.limitType ?? 0) === 1 ? 'ต่อเดือน' : Number(record?.limitType ?? 0) === 2 ? 'ต่อปี' : 'ต่อวัน'}</span><span aria-hidden="true" style="font-size:0.65rem;">▼</span>
                     </button>
                     <div id="h-limit-type-menu" role="listbox" aria-label="รอบการจำกัดสิทธิ์" hidden style="position:absolute; z-index:30; top:calc(100% + 4px); right:0; width:146px; padding:4px; border:1px solid #cbd5e1; border-radius:7px; background:#fff; box-shadow:0 8px 20px rgba(15,23,42,.18);">
-                      <button type="button" role="option" data-limit-type="0" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">วัน หรือ ต่อวัน</button>
-                      <button type="button" role="option" data-limit-type="1" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">เดือน หรือ ต่อเดือน</button>
-                      <button type="button" role="option" data-limit-type="2" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">ปี หรือ ต่อปี</button>
+                      <button type="button" role="option" data-limit-type="0" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">ต่อวัน</button>
+                      <button type="button" role="option" data-limit-type="1" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">ต่อเดือน</button>
+                      <button type="button" role="option" data-limit-type="2" style="width:100%; padding:7px 9px; border:0; border-radius:5px; background:#fff; color:#334155; font-size:0.8rem; text-align:left;">ต่อปี</button>
                     </div>
                   </div>
                 </div>
@@ -2662,7 +2662,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       allLimitField.value = '0';
       quotaField.value = '0';
       limitTypeField.value = '0';
-      limitTypeLabel.textContent = 'วัน หรือ ต่อวัน';
+      limitTypeLabel.textContent = 'ต่อวัน';
       allLimitField.style.background = '#f1f5f9';
       allLimitField.style.color = '#475569';
       allLimitField.style.cursor = 'not-allowed';

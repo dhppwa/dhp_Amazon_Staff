@@ -621,10 +621,11 @@ async getHistory(userPhone) {
     const accessLevelValue = [0, 1, 2, 3].includes(Number(payload.accessLevel))
       ? Number(payload.accessLevel)
       : 0;
-    const isNonCustomer = [2, 3].includes(accessLevelValue);
+    // แอดมินไม่มีสิทธิ์คูปอง แต่สถานะทดสอบระบบตั้งค่าและใช้สิทธิ์ได้เหมือนผู้ใช้/VIP
+    const isAdmin = accessLevelValue === 2;
     // ไม่จำกัดสิทธิ์ = ใช้ได้ไม่จำกัดครั้ง จึงไม่ต้องกำหนดโควตาต่อวัน/เดือน/ปี
     // และไม่ต้องตรวจค่า Day_Limit หรือ All_Limit
-    if (!isNonCustomer && !limitAllValue) {
+    if (!isAdmin && !limitAllValue) {
       const dayLimit = Number(payload.quotaPerDay ?? payload.Day_Limit);
       const usedCount = Number(payload.usedCount);
       const allLimit = Number(payload.allLimit);
@@ -677,7 +678,7 @@ async getHistory(userPhone) {
       if (duplicateEmail) throw new Error('Email นี้มีผู้ใช้งานแล้ว กรุณาใช้ Email อื่น');
     }
 
-    const dayLimitValue = isNonCustomer || limitAllValue ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
+    const dayLimitValue = isAdmin || limitAllValue ? 0 : (payload.quotaPerDay ?? payload.Day_Limit);
 
     const recordData = {
       Name: cleanName,
@@ -690,9 +691,9 @@ async getHistory(userPhone) {
       Day_Limit: dayLimitValue,  // ✅ บันทึกตรงตามค่าที่กรอก (หรือ quotaPerDay)
       Access_Level: accessLevelValue,
       IsUse: payload.id ? Boolean(payload.isUse) : false,
-      All_Use: isNonCustomer ? 0 : (payload.usedCount ?? 0),
-      All_Limit: isNonCustomer || limitAllValue ? 0 : (payload.allLimit ?? 10),
-      LimitAll: isNonCustomer ? false : limitAllValue,
+      All_Use: isAdmin ? 0 : (payload.usedCount ?? 0),
+      All_Limit: isAdmin || limitAllValue ? 0 : (payload.allLimit ?? 10),
+      LimitAll: isAdmin ? false : limitAllValue,
       LimitType: limitTypeValue,
       Discount: discountValue,
       UpdateDate: new Date().toISOString()

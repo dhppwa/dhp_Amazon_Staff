@@ -2653,8 +2653,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   };
   const updateLimitAllState = () => {
     const isUnlimited = getLimitAll();
-    const isNonCustomer = [2, 3].includes(Number(accessLevelField.value));
-    const disableUsageLimits = isNonCustomer || isUnlimited;
+    // แอดมินเท่านั้นที่ไม่มีสิทธิ์คูปอง ส่วนทดสอบระบบตั้งค่าได้เหมือนผู้ใช้/VIP
+    const isAdmin = Number(accessLevelField.value) === 2;
+    const disableUsageLimits = isAdmin || isUnlimited;
     const quotaField = document.querySelector('#h-field-quotaPerDay');
     if (isUnlimited) {
       // ไม่จำกัดต้องไม่คงค่าจำกัดเดิมไว้: บันทึก Day_Limit และ All_Limit เป็น 0
@@ -2686,14 +2687,14 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     if (disableUsageLimits) closeLimitTypeMenu();
   };
   const updateRightsFieldsVisibility = () => {
-    const isNonCustomer = [2, 3].includes(Number(accessLevelField.value));
-    limitSettings.hidden = isNonCustomer;
-    limitSettings.style.display = isNonCustomer ? 'none' : 'block';
-    rightsFields.hidden = isNonCustomer;
-    rightsFields.style.display = isNonCustomer ? 'none' : 'flex';
+    const isAdmin = Number(accessLevelField.value) === 2;
+    limitSettings.hidden = isAdmin;
+    limitSettings.style.display = isAdmin ? 'none' : 'block';
+    rightsFields.hidden = isAdmin;
+    rightsFields.style.display = isAdmin ? 'none' : 'flex';
 
     rightsFields.querySelectorAll('input').forEach((input) => {
-      if (isNonCustomer) {
+      if (isAdmin) {
         if (!Object.hasOwn(input.dataset, 'beforeAdmin')) {
           input.dataset.beforeAdmin = input.value;
         }
@@ -2710,7 +2711,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
 
     });
     limitSettings.querySelectorAll('input').forEach((input) => {
-      input.disabled = isNonCustomer;
+      input.disabled = isAdmin;
     });
     updateLimitAllState();
   };
@@ -2751,14 +2752,14 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     const loginType = getLoginType();
     const limitType = getLimitType();
     const limitAll = getLimitAll();
-    const isNonCustomer = [2, 3].includes(accessLevel);
+    const isAdmin = accessLevel === 2;
     const quotaInput = document.querySelector('#h-field-quotaPerDay');
     const allLimitInput = document.querySelector('#h-field-allLimit');
     const discountInput = document.querySelector('#h-field-discount');
-    const quotaVal = isNonCustomer || limitAll ? 0 : Number.parseInt(quotaInput.value, 10);
+    const quotaVal = isAdmin || limitAll ? 0 : Number.parseInt(quotaInput.value, 10);
     // ค่านี้คำนวณจากการใช้สิทธิ์จริง จึงไม่เปิดให้แก้ไขจากฟอร์มสมาชิก
-    const usedCountVal = isNonCustomer ? 0 : (isEdit ? Number(record?.usedCount ?? 0) : 0);
-    const allLimitVal = isNonCustomer || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
+    const usedCountVal = isAdmin ? 0 : (isEdit ? Number(record?.usedCount ?? 0) : 0);
+    const allLimitVal = isAdmin || limitAll ? 0 : Number.parseInt(allLimitInput.value, 10);
     const discountVal = Number.parseFloat(discountInput.value);
 
     if (!Number.isFinite(discountVal) || discountVal < 0 || discountVal > 100) {
@@ -2778,7 +2779,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       return;
     }
 
-    if (!isNonCustomer && !limitAll) {
+    if (!isAdmin && !limitAll) {
       const inputsToValidate = [quotaInput, allLimitInput];
       const invalidInput = inputsToValidate.find((input) => {
         const value = Number(input.value);

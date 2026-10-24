@@ -2456,7 +2456,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
               </select>
             </div>
 
-            <section aria-label="ข้อมูลสมาชิกและการเข้าสู่ระบบ" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #b7dfc0; border-radius:10px; background:#e8f5e9;">
+            <section aria-label="ข้อมูลสมาชิกและการเข้าสู่ระบบ" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #cbd5e1; border-radius:10px; background:#fff;">
             <fieldset style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
               <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">เลือกชื่อสำหรับเข้าสู่ระบบ *</legend>
               <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1rem;">
@@ -2491,9 +2491,9 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
             </div>
             </section>
 
-            <section aria-label="การจำกัดสิทธิ์และส่วนลด" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #ead58c; border-radius:10px; background:#fff7d6;">
+            <section aria-label="อเมซอน" style="display:flex; flex-direction:column; gap:0.8rem; padding:1rem; border:1px solid #b7dfc0; border-radius:10px; background:#e8f5e9;">
             <fieldset id="h-limit-settings" style="margin:0; padding:0.75rem; border:1px solid #cbd5e1; border-radius:8px;">
-              <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">การจำกัดสิทธิ์ทั้งหมด</legend>
+              <legend style="padding:0 0.35rem; font-size:0.85rem; font-weight:bold; color:#475569;">อเมซอน</legend>
               <div style="display:flex; flex-wrap:wrap; gap:0.65rem 1.25rem;">
                 <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-limit-all" value="0" ${!record?.limitAll ? 'checked' : ''}> จำกัดสิทธิ์</label>
                 <label style="display:flex; align-items:center; gap:0.35rem; cursor:pointer;"><input type="radio" name="h-limit-all" value="1" ${record?.limitAll ? 'checked' : ''}> ไม่จำกัด</label>

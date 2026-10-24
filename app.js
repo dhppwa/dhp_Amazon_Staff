@@ -2038,7 +2038,7 @@ function renderClientDetailPage(data) {
               ? `<div style="margin-top:0.2rem; color:#047857; font-weight:800; font-size:1.38rem; line-height:1.3;">จำนวนเงิน ฿${formatReceiptPrice(data.productPrice)}</div>`
               : `<div style="margin-top:0.14rem; color:#dc2626; font-weight:800; font-size:1.18rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
           </div>
-          ${hasCouponOrProduct ? renderReceiptPreviewCards(data) : ''}
+          <!-- ซ่อนพรีวิวบิลจากหน้าหลังสแกน QR ไว้ก่อน -->
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
             ${
               hasCouponOrProduct

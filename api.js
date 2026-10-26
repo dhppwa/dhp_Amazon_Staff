@@ -511,13 +511,35 @@ async getHistory(userPhone) {
 
     if (error) throw new Error(`ดึงข้อมูลตารางล้มเหลว: ${error.message}`);
 
+    // บัญชีทดสอบระบบในข้อมูลเดิมเคยมีโอกาสถูกบันทึก All_Use เป็น 0
+    // จึงนับจากบิลที่ใช้งานจริง เพื่อให้หน้าจัดการสมาชิกแสดง "ใช้ไปแล้ว" ถูกต้อง
+    const testMemberIds = (data || [])
+      .filter(item => Number(item.Access_Level) === 3)
+      .map(item => item.ID)
+      .filter(Boolean);
+    const testUsageCounts = new Map();
+    if (testMemberIds.length) {
+      const { data: testBills, error: testBillsError } = await supabase
+        .from('Cafe_Amazon_Bill')
+        .select('Cafe_Amazon_PK')
+        // d1-client ที่ใช้ในโปรเจคนี้ไม่รองรับ .in() จึงใช้ .or() แบบเดียวกับคำสั่งเดิม
+        .or(testMemberIds.map(id => `Cafe_Amazon_PK.eq.${id}`).join(','));
+      if (testBillsError) throw new Error(`ดึงจำนวนการใช้สิทธิ์ของทดสอบระบบล้มเหลว: ${testBillsError.message}`);
+      (testBills || []).forEach(bill => {
+        const id = String(bill.Cafe_Amazon_PK);
+        testUsageCounts.set(id, (testUsageCounts.get(id) || 0) + 1);
+      });
+    }
+
     return (data || []).map(item => ({
       id: item.ID,
       name: item.Name || '-',
       phone: item.Phone_No || '-',
       address: item.Detail || '-',
       project: item.Remark || '-',
-      usedCount: item.All_Use ?? 0,
+      usedCount: Number(item.Access_Level) === 3
+        ? (testUsageCounts.get(String(item.ID)) ?? Number(item.All_Use ?? 0))
+        : Number(item.All_Use ?? 0),
       allLimit: item.All_Limit ?? 10,
       quotaPerDay: item.Day_Limit ?? 1, // อ่านค่า Day_Limit จากเบส
       isUse: item.IsUse ?? false,

@@ -2882,7 +2882,7 @@ function renderHouseTable(list) {
       <td style="padding:0.75rem;">${esc(item.address || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.project || '-')}</td>
       <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.quotaPerDay ?? 1)}</td>
-      <td style="padding:0.75rem; text-align:center;">${item.usedCount ?? 0}</td>
+      <td style="padding:0.75rem; text-align:center;">${Number(item.usedCount ?? 0).toLocaleString('th-TH')}</td>
       <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.allLimit ?? 10)}</td>
       <td style="padding:0.75rem; text-align:center;">
         <div style="display:flex; gap:0.4rem; justify-content:center; align-items:center; flex-wrap:wrap;">

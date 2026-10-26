@@ -2160,7 +2160,7 @@ function renderClientDetailPage(data) {
                     ⚠️ ไม่พบคูปองหรือสินค้าที่เปิดใช้งานในขณะนี้ (ไม่สามารถพิมพ์ใบเสร็จได้)
                   </div>`
             }
-            <div class="staff-attention-blink" role="status" style="width:100%; padding:0.55rem; background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem; text-align:center;">
+            <div class="staff-attention-blink" role="status" style="margin:0.1rem 0; color:#dc2626; font-weight:800; font-size:1.2rem; line-height:1.3; text-align:center;">
               ฟรี ไม่ต้องรับชำระ
             </div>
           </div>

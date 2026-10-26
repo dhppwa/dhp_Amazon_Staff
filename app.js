@@ -2144,7 +2144,7 @@ function renderClientDetailPage(data) {
             <div style="margin-top:0.45rem; color:#0284c7; font-weight:800; font-size:1.32rem; line-height:1.3;">${esc(data.productName)}</div>
             ${isCustomAmountProduct
               ? `<div style="margin-top:0.2rem; color:#047857; font-weight:800; font-size:1.38rem; line-height:1.3;">จำนวนเงิน ฿${formatReceiptPrice(data.productPrice)}</div>`
-              : `<div style="margin-top:0.14rem; color:#dc2626; font-weight:800; font-size:1.18rem;">dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
+              : `<div class="staff-attention-blink" style="margin-top:0.14rem; color:#dc2626; font-weight:800; font-size:1.18rem;">ออกบิล dis ${Number(data.discount ?? 0).toLocaleString('th-TH', { maximumFractionDigits: 2 })}%</div>`}
           </div>
           <!-- ซ่อนพรีวิวบิลจากหน้าหลังสแกน QR ไว้ก่อน -->
           <div style="margin-top:0.75rem; display:flex; flex-direction:column; gap:0.45rem;">
@@ -2160,9 +2160,9 @@ function renderClientDetailPage(data) {
                     ⚠️ ไม่พบคูปองหรือสินค้าที่เปิดใช้งานในขณะนี้ (ไม่สามารถพิมพ์ใบเสร็จได้)
                   </div>`
             }
-            <button id="btn-open-history" style="width:100%; padding:0.55rem; background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem; cursor:pointer;">
-              📜 ดูประวัติการใช้สิทธิ์
-            </button>
+            <div class="staff-attention-blink" role="status" style="width:100%; padding:0.55rem; background:#f1f5f9; color:#334155; border:1px solid #cbd5e1; border-radius:8px; font-size:0.85rem; text-align:center;">
+              ฟรี ไม่ต้องรับชำระ
+            </div>
           </div>
         </div>
       </div>
@@ -2172,10 +2172,6 @@ function renderClientDetailPage(data) {
 
   app.innerHTML = modalHtml;
   document.querySelector('#btn-close-detail').onclick = renderMainUI;
-
-  document.querySelector('#btn-open-history').onclick = () => {
-    openHistoryModal(data.phone, data);
-  };
 
   if (hasCouponOrProduct) {
     const confirmRedeem = async (withoutPrinting = false) => {
@@ -3135,15 +3131,14 @@ function renderMainUI() {
         <p style="color: #f5eee3; margin-top: 0.25rem;">สแกน QR Code เพื่อใช้สิทธิ์และพิมพ์ใบเสร็จ</p>
       </header>
 
-      <div class="card" style="border: 1px solid #ddd; border-radius: 12px; padding: 1rem; background: #fff; margin-bottom: 1rem; text-align: center;">
+      <div class="staff-main-actions" aria-label="เมนูทางลัด">
+      <div class="staff-camera-action-card">
         <div id="reader" style="width:100%; max-width:100%; box-sizing:border-box; border-radius:8px; overflow:hidden; background:#000; display:none; margin-bottom:0.75rem;"></div>
         <p id="scanner-status" aria-live="polite" style="margin:0 0 .75rem; color:#766b5e; font-size:.85rem;"></p>
-        <button id="btn-toggle-camera" style="width: 100%; padding: 0.85rem; background: #059669; color: #fff; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 1rem;">
+        <button id="btn-toggle-camera" type="button" style="width:100%; padding:0.85rem; background:#059669; color:#fff; border:none; border-radius:8px; font-weight:bold; cursor:pointer; font-size:1rem;">
           📷 เปิดกล้องสแกน QR Code
         </button>
       </div>
-
-      <div class="staff-main-actions" aria-label="เมนูทางลัด">
       <button id="btn-sales-report" type="button" style="position:fixed; left:50%; transform:translateX(-50%); bottom:20px; min-height:52px; padding:.72rem .95rem; border:0; border-radius:999px; background:#0284c7; color:#fff; font-size:.9rem; font-weight:700; box-shadow:0 4px 12px rgba(0,0,0,.25); cursor:pointer; z-index:1000; display:flex; align-items:center; justify-content:center;">
         📊 รายงาน
       </button>

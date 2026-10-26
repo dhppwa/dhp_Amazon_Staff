@@ -239,7 +239,7 @@ body {
 /* หน้าแรก Staff: เว้นจากแถบสถานะ/รอยบาก เพื่อไม่ให้โลโก้ถูกทับ */
 .staff-main-shell {
   padding-top: calc(24px + env(safe-area-inset-top, 0px)) !important;
-  padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)) !important;
+  padding-bottom: calc(164px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
 /* เฉพาะหน้าจัดการข้อมูลสมาชิก: ใช้ความกว้างเต็มจอสำหรับตารางและข้อมูล */
@@ -284,11 +284,14 @@ body {
 
 .staff-main-actions {
   position: fixed;
-  left: calc(10px + env(safe-area-inset-left, 0px));
-  right: calc(10px + env(safe-area-inset-right, 0px));
+  left: 50%;
+  right: auto;
+  width: min(448px, calc(100% - 32px));
+  transform: translateX(-50%);
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: auto 52px;
   align-items: center;
   gap: 6px;
   z-index: 1000;
@@ -298,7 +301,7 @@ body {
 #btn-manage-member,
 #btn-sales-report,
 #btn-test-print {
-  grid-row: 1;
+  grid-row: 2;
   position: static !important;
   right: auto !important;
   bottom: auto !important;
@@ -320,6 +323,33 @@ body {
 #btn-manage-member {
   grid-column: 1;
   width: min(52px, calc(100% - 4px)) !important;
+}
+
+/* ปุ่มกล้องอยู่เหนือเมนู 3 ปุ่มด้านล่างเสมอ */
+.staff-camera-action-card {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  padding: 8px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, .12);
+  pointer-events: auto;
+}
+
+#btn-toggle-camera {
+  width: 100% !important;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+/* เน้นข้อมูลสำหรับพนักงานโดยไม่เปลี่ยนพื้นที่หรือขนาดของกรอบเดิม */
+@keyframes staff-attention-blink {
+  50% { opacity: .25; }
+}
+
+.staff-attention-blink {
+  animation: staff-attention-blink .85s step-end infinite;
 }
 
 #btn-sales-report {

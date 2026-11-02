@@ -753,15 +753,32 @@ async getHistory(userPhone) {
    */
   async deleteHouseData(id) {
     const supabase = getSupabase();
+    const { data: member, error: memberError } = await supabase
+      .from('Cafe_Amazon_Promosion_House')
+      .select('ID, Access_Level')
+      .eq('ID', id)
+      .maybeSingle();
+    if (memberError) throw new Error(`ตรวจสอบสถานะสมาชิกไม่สำเร็จ: ${memberError.message}`);
+    if (!member) throw new Error('ไม่พบข้อมูลสมาชิกที่ต้องการลบ');
+
     const { data: billData, error: billError } = await supabase
       .from('Cafe_Amazon_Bill')
       .select('Bill_No')
-      .eq('Cafe_Amazon_PK', id)
-      .limit(1);
+      .eq('Cafe_Amazon_PK', id);
 
     if (billError) throw new Error(`ตรวจสอบประวัติการใช้สิทธิ์ไม่สำเร็จ: ${billError.message}`);
-    if (billData?.length) {
+    const isSystemTest = Number(member.Access_Level) === 3;
+    if (billData?.length && !isSystemTest) {
       throw new Error('ไม่สามารถลบได้ เนื่องจากมีการใช้สิทธิ์ไปแล้ว');
+    }
+
+    // อนุญาตเฉพาะบัญชีทดสอบระบบให้ล้างข้อมูลทดสอบ พร้อมบิลที่ผูกอยู่
+    if (isSystemTest && billData?.length) {
+      const { error: deleteBillsError } = await supabase
+        .from('Cafe_Amazon_Bill')
+        .delete()
+        .eq('Cafe_Amazon_PK', id);
+      if (deleteBillsError) throw new Error(`ลบบิลของผู้ใช้ทดสอบระบบไม่สำเร็จ: ${deleteBillsError.message}`);
     }
 
     const { error } = await supabase
@@ -770,7 +787,7 @@ async getHistory(userPhone) {
       .eq('ID', id);
 
     if (error) throw new Error(`ลบข้อมูลล้มเหลว: ${error.message}`);
-    return { success: true };
+    return { success: true, deletedBills: isSystemTest ? (billData?.length || 0) : 0 };
   },
 
   /**

@@ -71,6 +71,8 @@ document.addEventListener('touchstart', event => {
   staffTouchStartY = event.touches[0]?.clientY || 0;
 }, { passive: true });
 document.addEventListener('touchmove', event => {
+  // พื้นที่ประวัติมีตัวเลื่อนของตัวเอง จึงไม่ใช้ตำแหน่ง scroll ของ document มาตัดสิน
+  if (event.target instanceof Element && event.target.closest('#history-list-body')) return;
   const isPullingDown = (event.touches[0]?.clientY || 0) > staffTouchStartY;
   const atTop = (document.scrollingElement?.scrollTop || 0) <= 0;
   if (isPullingDown && atTop) event.preventDefault();

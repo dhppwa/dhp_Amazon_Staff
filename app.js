@@ -2293,17 +2293,23 @@ async function openHistoryModal(phone, clientData, onClose) {
   try {
     const historyList = await window.staffApi.getHistory(phone);
     const bodyEl = document.querySelector('#history-list-body');
+    const usedRights = Math.max(0, Number(clientData?.usedCount ?? 0));
+    const remainingRights = clientData?.limitAll
+      ? 'ไม่จำกัด'
+      : `${Math.max(0, Number(clientData?.allLimit ?? 0) - usedRights).toLocaleString('th-TH')} สิทธิ์`;
     const historySummary = (historyList || []).reduce((groups, item) => {
       const productName = String(item?.productName || 'ไม่ระบุประเภท').trim() || 'ไม่ระบุประเภท';
       groups.set(productName, (groups.get(productName) || 0) + 1);
       return groups;
     }, new Map());
-    const historySummaryHtml = historyList?.length ? `
+    const historySummaryHtml = `
       <section style="margin:0 0 0.9rem; padding:0.85rem; border:1px solid #bbf7d0; border-radius:10px; background:#f0fdf4;">
         <div style="font-weight:800; color:#047857; margin-bottom:0.55rem;">สรุปรวมรายการ</div>
         <div style="display:flex; justify-content:space-between; gap:0.75rem; padding-bottom:0.55rem; border-bottom:1px solid #bbf7d0; color:#1f2937;">
-          <span>รวมจำนวนทั้งหมด</span><strong style="color:#047857; white-space:nowrap;">${historyList.length.toLocaleString('th-TH')} รายการ</strong>
+          <span>รวมจำนวนทั้งหมด</span><strong style="color:#047857; white-space:nowrap;">${(historyList?.length || 0).toLocaleString('th-TH')} รายการ</strong>
         </div>
+        <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.55rem; color:#334155;"><span>สิทธิ์ที่ใช้ไป</span><strong>${usedRights.toLocaleString('th-TH')} สิทธิ์</strong></div>
+        <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.35rem; color:#334155;"><span>สิทธิ์คงเหลือทั้งหมด</span><strong>${remainingRights}</strong></div>
         <div style="margin:0.65rem 0 0.35rem; font-size:0.82rem; font-weight:700; color:#475569;">แยกตามประเภท</div>
         <div style="display:grid; gap:0.35rem;">
           ${[...historySummary.entries()].map(([productName, count]) => `
@@ -2311,7 +2317,7 @@ async function openHistoryModal(phone, clientData, onClose) {
               <span style="overflow-wrap:anywhere;">${esc(productName)}</span><strong style="white-space:nowrap;">${count.toLocaleString('th-TH')} รายการ</strong>
             </div>`).join('')}
         </div>
-      </section>` : '';
+      </section>`;
 
     const historyRows = historyList?.length
       ? historyList.map((item, index) => `

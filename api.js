@@ -132,9 +132,7 @@ const PRODUCT_MAP = {
 for (const id of ['1', '2', '3', '4', '5', '7', '9', '10', '11', '13', '14', '15', '16', '17', '18', '19']) {
   PRODUCT_MAP[id].image = `public/assets/image/product-${id}-cutout.png`;
 }
-for (const [id, imageId] of Object.entries({ '6': '3', '8': '9', '12': '13' })) {
-  PRODUCT_MAP[id].image = `public/assets/image/product-${imageId}-cutout.png`;
-}
+for (const id of ['6', '8', '12']) PRODUCT_MAP[id].image = 'public/assets/image/hot-drink-shared-cutout.png';
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
 const getCustomAmountProduct = productId => {

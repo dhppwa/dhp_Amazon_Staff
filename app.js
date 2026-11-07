@@ -1512,9 +1512,22 @@ function applyScannedProductFallback(data, scannedProductId) {
     '1': { name: 'แบล็คคอฟฟี (เย็น)', image: 'public/assets/image/black-coffee.webp', price: 60 },
     '2': { name: 'เอสเปรสโซ (เย็น)', image: 'public/assets/image/espresso.webp', price: 60 },
     '3': { name: 'ชานม (เย็น)', image: 'public/assets/image/tea-with-milk.webp', price: 50 },
-    '4': { name: 'แบล็คคอฟฟี (ร้อน)', image: 'public/assets/image/black-coffee.webp', price: 60 },
-    '5': { name: 'เอสเปรสโซ (ร้อน)', image: 'public/assets/image/espresso.webp', price: 60 },
-    '6': { name: 'ชานม (ร้อน)', image: 'public/assets/image/tea-with-milk.webp', price: 50 }
+    '4': { name: 'แบล็คคอฟฟี (ร้อน)', image: 'public/assets/image/black-coffee.webp', price: 40 },
+    '5': { name: 'เอสเปรสโซ (ร้อน)', image: 'public/assets/image/espresso.webp', price: 40 },
+    '6': { name: 'ชานม (ร้อน)', image: 'public/assets/image/tea-with-milk.webp', price: 45 },
+    '7': { name: 'ชา (ร้อน)', price: 45 },
+    '8': { name: 'ชาเขียวนม (ร้อน)', price: 50 },
+    '9': { name: 'ชาเขียวนม (เย็น)', price: 55 },
+    '10': { name: 'ชาดำ (เย็น)', price: 45 },
+    '11': { name: 'ชามะนาว (เย็น)', price: 50 },
+    '12': { name: 'ช็อกโกแลต (ร้อน)', price: 45 },
+    '13': { name: 'ช็อกโกแลต (เย็น)', price: 55 },
+    '14': { name: 'น้ำลิ้นจี่ (เย็น)', price: 45 },
+    '15': { name: 'อเมซอน (ร้อน)', price: 50 },
+    '16': { name: 'คาปูชิโน (ร้อน)', price: 50 },
+    '17': { name: 'ลาเต้อเมซอน (ร้อน)', price: 55 },
+    '18': { name: 'มอคค่า (ร้อน)', price: 55 },
+    '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 }
   };
   const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
   const databaseProductId = normalizeProductId(data?.productId);

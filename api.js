@@ -110,10 +110,31 @@ const PRODUCT_MAP = {
   '1': { name: 'แบล็คคอฟฟี (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
   '2': { name: 'เอสเปรสโซ (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
   '3': { name: 'ชานม (เย็น)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 },
-  '4': { name: 'แบล็คคอฟฟี (ร้อน)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
-  '5': { name: 'เอสเปรสโซ (ร้อน)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
-  '6': { name: 'ชานม (ร้อน)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 }
+  '4': { name: 'แบล็คคอฟฟี (ร้อน)', detail: 'มูลค่า 40 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 40 },
+  '5': { name: 'เอสเปรสโซ (ร้อน)', detail: 'มูลค่า 40 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 40 },
+  '6': { name: 'ชานม (ร้อน)', detail: 'มูลค่า 45 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 45 },
+  '7': { name: 'ชา (ร้อน)', price: 45 },
+  '8': { name: 'ชาเขียวนม (ร้อน)', price: 50 },
+  '9': { name: 'ชาเขียวนม (เย็น)', price: 55 },
+  '10': { name: 'ชาดำ (เย็น)', price: 45 },
+  '11': { name: 'ชามะนาว (เย็น)', price: 50 },
+  '12': { name: 'ช็อกโกแลต (ร้อน)', price: 45 },
+  '13': { name: 'ช็อกโกแลต (เย็น)', price: 55 },
+  '14': { name: 'น้ำลิ้นจี่ (เย็น)', price: 45 },
+  '15': { name: 'อเมซอน (ร้อน)', price: 50 },
+  '16': { name: 'คาปูชิโน (ร้อน)', price: 50 },
+  '17': { name: 'ลาเต้อเมซอน (ร้อน)', price: 55 },
+  '18': { name: 'มอคค่า (ร้อน)', price: 55 },
+  '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 }
 };
+
+// ภาพสินค้าที่มีภาพแยกพื้นหลังโปร่งใสตรงกับรายการและอุณหภูมิ
+for (const id of ['1', '2', '3', '4', '5', '7', '9', '10', '11', '13', '14', '15', '16', '17', '18', '19']) {
+  PRODUCT_MAP[id].image = `public/assets/image/product-${id}-cutout.png`;
+}
+for (const [id, imageId] of Object.entries({ '6': '3', '8': '9', '12': '13' })) {
+  PRODUCT_MAP[id].image = `public/assets/image/product-${imageId}-cutout.png`;
+}
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
 const getCustomAmountProduct = productId => {
@@ -127,7 +148,7 @@ const getCustomAmountProduct = productId => {
 const getProductDefinition = productId => PRODUCT_MAP[productId] || getCustomAmountProduct(productId);
 const getVisibleProductName = (storedName, product) => {
   const name = cleanString(storedName);
-  // รายการปกติใช้ชื่อจากแผนที่กลางเสมอ เพื่อให้ทุกหน้ามีคำว่า (เย็น) เหมือนกัน
+  // รายการปกติใช้ชื่อจากแผนที่กลางตามรหัสและชนิดร้อนหรือเย็น
   if (product && !product.isCustomAmount) return product.name;
   if (!name || /^สินค้า\s*รหัส\s*/i.test(name)) return product?.name || 'รายการสินค้า';
   return name;

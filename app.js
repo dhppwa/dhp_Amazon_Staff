@@ -1511,7 +1511,10 @@ function applyScannedProductFallback(data, scannedProductId) {
   const products = {
     '1': { name: 'แบล็คคอฟฟี (เย็น)', image: 'public/assets/image/black-coffee.webp', price: 60 },
     '2': { name: 'เอสเปรสโซ (เย็น)', image: 'public/assets/image/espresso.webp', price: 60 },
-    '3': { name: 'ชานม (เย็น)', image: 'public/assets/image/tea-with-milk.webp', price: 50 }
+    '3': { name: 'ชานม (เย็น)', image: 'public/assets/image/tea-with-milk.webp', price: 50 },
+    '4': { name: 'แบล็คคอฟฟี (ร้อน)', image: 'public/assets/image/black-coffee.webp', price: 60 },
+    '5': { name: 'เอสเปรสโซ (ร้อน)', image: 'public/assets/image/espresso.webp', price: 60 },
+    '6': { name: 'ชานม (ร้อน)', image: 'public/assets/image/tea-with-milk.webp', price: 50 }
   };
   const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
   const databaseProductId = normalizeProductId(data?.productId);

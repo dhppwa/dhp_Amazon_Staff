@@ -109,7 +109,10 @@ async function updateStaffUsage(phone, isUse, { keepalive = false } = {}) {
 const PRODUCT_MAP = {
   '1': { name: 'แบล็คคอฟฟี (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
   '2': { name: 'เอสเปรสโซ (เย็น)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
-  '3': { name: 'ชานม (เย็น)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 }
+  '3': { name: 'ชานม (เย็น)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 },
+  '4': { name: 'แบล็คคอฟฟี (ร้อน)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/black-coffee.webp', color: 'orange', price: 60 },
+  '5': { name: 'เอสเปรสโซ (ร้อน)', detail: 'มูลค่า 60 บาท', image: 'public/assets/image/espresso.webp', color: 'green', price: 60 },
+  '6': { name: 'ชานม (ร้อน)', detail: 'มูลค่า 50 บาท', image: 'public/assets/image/tea-with-milk.webp', color: 'gold', price: 50 }
 };
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');

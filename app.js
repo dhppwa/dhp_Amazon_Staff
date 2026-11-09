@@ -6,6 +6,13 @@ let bluetoothCharacteristic = null;
 let currentHouseDataList = [];
 let adminSession = null;
 let isProcessingScan = false;
+let pendingPrinterJobs = 0;
+window.canApplyPwaUpdate = () => {
+  const reader = document.querySelector('#reader');
+  const cameraOpen = reader && getComputedStyle(reader).display !== 'none';
+  return Boolean(document.querySelector('.staff-main-shell')) && !cameraOpen && !html5QrCode?.isScanning
+    && !isProcessingScan && pendingPrinterJobs === 0 && !document.querySelector('#print-loading-dialog, [role="dialog"]');
+};
 let screenWakeLock = null;
 let printerStartupChecked = false;
 let bluetoothStartupVerified = false;
@@ -845,7 +852,9 @@ let printerJobQueue = Promise.resolve();
 
 // ไม่ให้หลายหน้าจอหรือการแตะซ้ำส่ง byte เข้าเครื่องพิมพ์พร้อมกัน
 function enqueuePrinterJob(job) {
-  const queuedJob = printerJobQueue.then(job, job);
+  pendingPrinterJobs++;
+  const runJob = async () => { try { return await job(); } finally { pendingPrinterJobs--; } };
+  const queuedJob = printerJobQueue.then(runJob, runJob);
   printerJobQueue = queuedJob.catch(() => undefined);
   return queuedJob;
 }
@@ -3167,6 +3176,7 @@ async function openAdminLoginDialog() {
 
 // ===== หน้าหลัก UI =====
 function renderMainUI() {
+  isProcessingScan = false;
   scanWithoutPrinter = false;
   app.classList.remove('member-management-screen');
   app.innerHTML = `

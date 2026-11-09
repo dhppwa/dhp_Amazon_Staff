@@ -69,7 +69,8 @@
   <script src="config.js?v=9"></script>
   <script src="d1-client.js?v=3"></script>
   <script src="api.js?v=61"></script>
-  <script src="app.js?v=273"></script>
+  <script src="app.js?v=274"></script>
+  <script src="pwa-update.js?v=1"></script>
 
   <!-- สคริปต์เปิดใช้งาน Service Worker สำหรับ Android PWA -->
   <script>
@@ -97,22 +98,6 @@
       window.dispatchEvent(new Event('pwa-installed'));
     });
 
-    if ('serviceWorker' in navigator) {
-      let refreshingForUpdate = false;
-      navigator.serviceWorker.addEventListener('controllerchange', () => {
-        if (refreshingForUpdate) return;
-        refreshingForUpdate = true;
-        window.location.reload();
-      });
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js', { scope: './', updateViaCache: 'none' })
-          .then(async (reg) => {
-            await reg.update();
-            console.log('SW Registered:', reg.scope);
-          })
-          .catch((err) => console.error('SW Error:', err));
-      });
-    }
   </script>
 </body>
 </html>

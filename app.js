@@ -1536,7 +1536,9 @@ function applyScannedProductFallback(data, scannedProductId) {
     '16': { name: 'คาปูชิโน (ร้อน)', price: 50 },
     '17': { name: 'ลาเต้อเมซอน (ร้อน)', price: 55 },
     '18': { name: 'มอคค่า (ร้อน)', price: 55 },
-    '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 }
+    '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 },
+    '20': { name: 'นมสด (ร้อน)', image: 'public/assets/image/hot-drink-shared-cutout.png', price: 45 },
+    '21': { name: 'นมสด (เย็น)', image: 'public/assets/image/product-21-cutout.png', price: 50 }
   };
   const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
   const databaseProductId = normalizeProductId(data?.productId);
@@ -1551,7 +1553,7 @@ function applyScannedProductFallback(data, scannedProductId) {
     ...data,
     productId,
     productName: data?.productName && data.productName !== 'ไม่ได้เลือกสินค้า' ? data.productName : product.name,
-    productImage: resolveProductImage(productId, product.name, data?.productImage),
+    productImage: resolveProductImage(productId, product.name, data?.productImage || product.image),
     productPrice: Number(data?.productPrice || product.price || 0)
   };
 }

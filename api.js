@@ -125,14 +125,16 @@ const PRODUCT_MAP = {
   '16': { name: 'คาปูชิโน (ร้อน)', price: 50 },
   '17': { name: 'ลาเต้อเมซอน (ร้อน)', price: 55 },
   '18': { name: 'มอคค่า (ร้อน)', price: 55 },
-  '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 }
+  '19': { name: 'ไวท์ ช็อก มัคคิอาโต้ (ร้อน)', price: 60 },
+  '20': { name: 'นมสด (ร้อน)', price: 45 },
+  '21': { name: 'นมสด (เย็น)', price: 50 }
 };
 
 // ภาพสินค้าที่มีภาพแยกพื้นหลังโปร่งใสตรงกับรายการและอุณหภูมิ
-for (const id of ['1', '2', '3', '4', '5', '7', '9', '10', '11', '13', '14', '15', '16', '17', '18', '19']) {
+for (const id of ['1', '2', '3', '4', '5', '7', '9', '10', '11', '13', '14', '15', '16', '17', '18', '19', '21']) {
   PRODUCT_MAP[id].image = `public/assets/image/product-${id}-cutout.png`;
 }
-for (const id of ['6', '8', '12']) PRODUCT_MAP[id].image = 'public/assets/image/hot-drink-shared-cutout.png';
+for (const id of ['6', '8', '12', '20']) PRODUCT_MAP[id].image = 'public/assets/image/hot-drink-shared-cutout.png';
 
 const normalizeProductId = value => String(value ?? '').trim().replace(/\.0+$/, '');
 const getCustomAmountProduct = productId => {

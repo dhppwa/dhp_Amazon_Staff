@@ -1950,10 +1950,10 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <section style="padding:16px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,.05);">
           <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:14px;">
             <div>
-              <label for="sales-report-start-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่เริ่มต้น</label>
-              <div style="display:flex; gap:8px; align-items:stretch;"><button id="sales-report-start-date" type="button" style="min-width:0; flex:1 1 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
+              <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px;"><label for="sales-report-start-date" style="font-weight:700;">วันที่เริ่มต้น</label><button id="sales-report-today" type="button" style="flex:0 0 auto; padding:6px 12px; border:0; border-radius:8px; background:#059669; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">วันนี้</button></div>
+              <button id="sales-report-start-date" type="button" style="width:100%; min-width:0; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
                 <span id="sales-report-start-date-label">${esc(formatReportDate(startDateValue))}</span><span aria-hidden="true" style="font-size:1.25rem;">📅</span>
-              </button><button id="sales-report-today" type="button" style="flex:0 0 auto; padding:10px 12px; border:0; border-radius:8px; background:#059669; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">วันนี้</button></div>
+              </button>
             </div>
             <div>
               <label for="sales-report-end-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่สิ้นสุด</label>

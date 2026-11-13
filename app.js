@@ -1630,10 +1630,10 @@ function formatReportDate(value) {
   });
 }
 
-function showReportDatePicker(initialValue) {
+function showReportDatePicker(initialValue, { minDate = null } = {}) {
   return new Promise(resolve => {
     document.querySelector('#report-date-picker')?.remove();
-    let selectedDate = parseReportDate(initialValue);
+    let selectedDate = parseReportDate(minDate && initialValue < minDate ? minDate : initialValue);
     let visibleMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
 
     document.body.insertAdjacentHTML('beforeend', `
@@ -1681,7 +1681,8 @@ function showReportDatePicker(initialValue) {
         const candidate = new Date(year, month, day);
         const isSelected = toValue(candidate) === toValue(selectedDate);
         const isToday = toValue(candidate) === getLocalDateValue();
-        cells.push(`<button type="button" data-day="${day}" style="aspect-ratio:1; border:${isToday ? '1px solid #0284c7' : '1px solid transparent'}; border-radius:50%; background:${isSelected ? '#0284c7' : 'transparent'}; color:${isSelected ? '#fff' : '#1e293b'}; font:inherit; font-weight:${isSelected ? '800' : '500'};">${day}</button>`);
+        const disabled = Boolean(minDate && toValue(candidate) < minDate);
+        cells.push(`<button type="button" data-day="${day}" ${disabled ? 'disabled' : ''} style="aspect-ratio:1; border:${isToday ? '1px solid #0284c7' : '1px solid transparent'}; border-radius:50%; background:${isSelected ? '#0284c7' : 'transparent'}; color:${disabled ? '#cbd5e1' : isSelected ? '#fff' : '#1e293b'}; font:inherit; font-weight:${isSelected ? '800' : '500'};">${day}</button>`);
       }
       daysContainer.innerHTML = cells.join('');
       daysContainer.querySelectorAll('[data-day]').forEach(button => {
@@ -1701,11 +1702,17 @@ function showReportDatePicker(initialValue) {
       renderCalendar();
     };
     document.querySelector('#report-date-today').onclick = () => {
+      if (minDate && getLocalDateValue() < minDate) return;
       selectedDate = new Date();
       visibleMonth = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
       renderCalendar();
     };
     document.querySelector('#report-date-cancel').onclick = () => finish(null);
+    if (minDate && getLocalDateValue() < minDate) {
+      const todayButton = document.querySelector('#report-date-today');
+      todayButton.disabled = true;
+      todayButton.style.opacity = '.5';
+    }
     document.querySelector('#report-date-confirm').onclick = () => finish(toValue(selectedDate));
     renderCalendar();
   });
@@ -1862,8 +1869,6 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#sales-report-print-dialog')?.remove();
   const lines = buildSalesReportPrintLines(startDate, endDate, mode, bills);
   const canPrintSelectedReport = Boolean(getPrintReportSelection()[mode]);
-  // iOS/AirPrint ไม่มี Web Bluetooth จึงยังพิมพ์ผ่านเมนูระบบได้ตามปกติ
-  const printerOnlineForReport = !supportsBluetoothPrinting() || isPrinterOnline();
   const previewRows = lines.map(line => {
     if (line.inlineLeftText !== undefined || line.inlineRightText !== undefined) {
       const leftWeight = line.leftBold ? '700' : '400';
@@ -1890,7 +1895,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
           <div id="sales-report-print-paper" style="width:min(100%,920px); min-height:100%; margin:0 auto; padding:clamp(20px,4vw,42px); box-sizing:border-box; background:#fff; color:#000; font-family:'Noto Sans Thai','Sarabun',Tahoma,sans-serif; line-height:1.55; box-shadow:0 5px 20px rgba(0,0,0,.2);">${previewRows}</div>
         </main>
         ${canPrintSelectedReport ? `<footer class="sales-report-print-actions" style="position:absolute; left:0; right:0; bottom:0; display:flex; justify-content:center; padding:14px 16px calc(14px + env(safe-area-inset-bottom, 0px)); background:rgba(255,255,255,.96); border-top:1px solid #cbd5e1; box-shadow:0 -4px 16px rgba(0,0,0,.12);">
-          <button id="btn-confirm-sales-report-print" type="button" ${printerOnlineForReport ? '' : 'disabled aria-disabled="true"'} style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:${printerOnlineForReport ? '#0284c7' : '#94a3b8'}; color:#fff; font-weight:700; cursor:${printerOnlineForReport ? 'pointer' : 'not-allowed'};">${printerOnlineForReport ? '🖨️ พิมพ์' : '🖨️ เครื่องพิมพ์ Offline'}</button>
+          <button id="btn-confirm-sales-report-print" type="button" style="width:auto; min-width:150px; padding:11px 20px; border:0; border-radius:9px; background:#0284c7; color:#fff; font-weight:700; cursor:pointer;">🖨️ พิมพ์</button>
         </footer>` : ''}
       </section>
     </div>`);
@@ -1899,10 +1904,6 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
   document.querySelector('#btn-close-sales-report-print').onclick = () => dialog.remove();
   document.querySelector('#btn-confirm-sales-report-print')?.addEventListener('click', async event => {
     const button = event.currentTarget;
-    if (supportsBluetoothPrinting() && !isPrinterOnline()) {
-      showAppDialog('เครื่องพิมพ์ Offline กรุณาเชื่อมต่อเครื่องพิมพ์ก่อนพิมพ์รายงาน', { title: 'เครื่องพิมพ์ Offline' });
-      return;
-    }
     button.disabled = true;
     try {
       if (!supportsBluetoothPrinting()) {
@@ -1945,14 +1946,14 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <h3 style="margin:0; font-size:1.1rem; color:#0284c7;">📊 รายงานการขาย</h3>
         <span id="printer-connection-report" data-printer-connection-status style="margin-left:auto; display:inline-flex; align-items:center; padding:5px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
       </div>
-      <main style="flex:1; max-width:1000px; width:100%; margin:0 auto; padding:20px; box-sizing:border-box;">
+      <main style="flex:1; max-width:1000px; width:100%; margin:0 auto; padding:20px 20px calc(100px + env(safe-area-inset-bottom, 0px)); box-sizing:border-box;">
         <section style="padding:16px; border:1px solid #cbd5e1; border-radius:12px; background:#fff; box-shadow:0 4px 6px -1px rgba(0,0,0,.05);">
           <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-bottom:14px;">
             <div>
               <label for="sales-report-start-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่เริ่มต้น</label>
-              <button id="sales-report-start-date" type="button" style="width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
+              <div style="display:flex; gap:8px; align-items:stretch;"><button id="sales-report-start-date" type="button" style="min-width:0; flex:1 1 auto; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 13px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; color:#1e293b; font:inherit; text-align:left;">
                 <span id="sales-report-start-date-label">${esc(formatReportDate(startDateValue))}</span><span aria-hidden="true" style="font-size:1.25rem;">📅</span>
-              </button>
+              </button><button id="sales-report-today" type="button" style="flex:0 0 auto; padding:10px 12px; border:0; border-radius:8px; background:#059669; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">วันนี้</button></div>
             </div>
             <div>
               <label for="sales-report-end-date" style="display:block; margin-bottom:8px; font-weight:700;">วันที่สิ้นสุด</label>
@@ -1968,13 +1969,13 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
               <label style="display:flex; align-items:center; gap:7px; cursor:pointer;"><input type="radio" name="sales-report-mode" value="detail"> รายละเอียด</label>
             </div>
           </fieldset>
-          <div style="display:flex; justify-content:center; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:flex-end; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:16px;">
             <button id="btn-load-sales-report" type="button" style="width:auto; min-width:0; padding:11px 18px; border:0; border-radius:8px; background:#0284c7; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">แสดงรายงาน</button>
-            <button id="btn-preview-sales-report" type="button" style="width:auto; min-width:0; padding:11px 18px; border:0; border-radius:8px; background:#7c3aed; color:#fff; font:inherit; font-weight:700; white-space:nowrap;">🖨️ พรีวิว / พิมพ์</button>
           </div>
           <div id="sales-report-content" aria-live="polite"></div>
         </section>
       </main>
+      <button id="btn-preview-sales-report" type="button" style="position:fixed; right:16px; bottom:calc(16px + env(safe-area-inset-bottom, 0px)); z-index:1000; width:auto; min-width:0; padding:11px 18px; border:0; border-radius:8px; background:#7c3aed; color:#fff; font:inherit; font-weight:700; white-space:nowrap; box-shadow:0 4px 12px #0004;">🖨️ พรีวิว / พิมพ์</button>
     </div>`;
 
   refreshPrinterConnectionIndicators();
@@ -1984,6 +1985,16 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
   let reportBills = [];
   let loadedStartDate = '';
   let loadedEndDate = '';
+  let reportRequestVersion = 0;
+
+  const clearReport = () => {
+    reportRequestVersion++;
+    reportBills = [];
+    loadedStartDate = '';
+    loadedEndDate = '';
+    const content = document.querySelector('#sales-report-content');
+    if (content) content.innerHTML = '';
+  };
 
   const renderReport = () => {
     const content = document.querySelector('#sales-report-content');
@@ -2031,14 +2042,20 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
       await showAppDialog('วันที่เริ่มต้นต้องไม่เกินวันที่สิ้นสุด', { title: 'ช่วงวันที่ไม่ถูกต้อง' });
       return;
     }
+    const requestVersion = ++reportRequestVersion;
+    const requestedStartDate = selectedStartDate;
+    const requestedEndDate = selectedEndDate;
     content.innerHTML = '<p style="text-align:center; color:#64748b;">กำลังโหลดรายงาน...</p>';
     try {
-      reportBills = await window.staffApi.getSalesReport(selectedStartDate, selectedEndDate);
-      loadedStartDate = selectedStartDate;
-      loadedEndDate = selectedEndDate;
+      const result = await window.staffApi.getSalesReport(requestedStartDate, requestedEndDate);
+      if (requestVersion !== reportRequestVersion || !content.isConnected) return false;
+      reportBills = result;
+      loadedStartDate = requestedStartDate;
+      loadedEndDate = requestedEndDate;
       renderReport();
       return true;
     } catch (error) {
+      if (requestVersion !== reportRequestVersion || !content.isConnected) return false;
       content.innerHTML = '';
       showAppDialog(error.message || 'ไม่สามารถโหลดรายงานการขายได้', { title: 'รายงานการขาย' });
       return false;
@@ -2049,12 +2066,26 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
     if (!confirmedDate) return;
     selectedStartDate = confirmedDate;
     document.querySelector('#sales-report-start-date-label').textContent = formatReportDate(selectedStartDate);
+    if (selectedEndDate < selectedStartDate) {
+      selectedEndDate = selectedStartDate;
+      document.querySelector('#sales-report-end-date-label').textContent = formatReportDate(selectedEndDate);
+    }
+    clearReport();
   };
   document.querySelector('#sales-report-end-date').onclick = async () => {
-    const confirmedDate = await showReportDatePicker(selectedEndDate);
+    const confirmedDate = await showReportDatePicker(selectedEndDate, { minDate: selectedStartDate });
     if (!confirmedDate) return;
+    if (confirmedDate < selectedStartDate) return;
     selectedEndDate = confirmedDate;
     document.querySelector('#sales-report-end-date-label').textContent = formatReportDate(selectedEndDate);
+    clearReport();
+  };
+  document.querySelector('#sales-report-today').onclick = () => {
+    selectedStartDate = getLocalDateValue();
+    selectedEndDate = selectedStartDate;
+    document.querySelector('#sales-report-start-date-label').textContent = formatReportDate(selectedStartDate);
+    document.querySelector('#sales-report-end-date-label').textContent = formatReportDate(selectedEndDate);
+    clearReport();
   };
   document.querySelector('#btn-load-sales-report').onclick = loadReport;
   document.querySelector('#btn-preview-sales-report').onclick = async () => {
@@ -2066,7 +2097,7 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
     showSalesReportPrintPreview(selectedStartDate, selectedEndDate, mode, reportBills);
   };
   document.querySelectorAll('input[name="sales-report-mode"]').forEach(field => field.onchange = () => {
-    renderReport();
+    if (loadedStartDate === selectedStartDate && loadedEndDate === selectedEndDate) renderReport();
   });
   await loadReport();
 }
@@ -2334,11 +2365,9 @@ async function openHistoryModal(phone, clientData, onClose) {
     const historySummaryHtml = `
       <section style="margin:0 0 0.9rem; padding:0.85rem; border:1px solid #bbf7d0; border-radius:10px; background:#f0fdf4;">
         <div style="font-weight:800; color:#047857; margin-bottom:0.55rem;">สรุปรวมรายการ</div>
-        <div style="display:flex; justify-content:space-between; gap:0.75rem; padding-bottom:0.55rem; border-bottom:1px solid #bbf7d0; color:#1f2937;">
-          <span>รวมจำนวนทั้งหมด</span><strong style="color:#047857; white-space:nowrap;">${(historyList?.length || 0).toLocaleString('th-TH')} รายการ</strong>
-        </div>
         <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.55rem; color:#334155;"><span>สิทธิ์ที่ใช้ไป</span><strong>${usedRights.toLocaleString('th-TH')} สิทธิ์</strong></div>
-        <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.35rem; color:#334155;"><span>สิทธิ์คงเหลือทั้งหมด</span><strong>${remainingRights}</strong></div>
+        <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.35rem; color:#334155;"><span>สิทธิ์คงเหลือ</span><strong>${remainingRights}</strong></div>
+        <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:0.35rem; color:#334155;"><span>สิทธิ์ทั้งหมด</span><strong>${clientData?.limitAll ? 'ไม่จำกัด' : `${Number(clientData?.allLimit ?? 0).toLocaleString('th-TH')} สิทธิ์`}</strong></div>
         <div style="margin:0.65rem 0 0.35rem; font-size:0.82rem; font-weight:700; color:#475569;">แยกตามประเภท</div>
         <div style="display:grid; gap:0.35rem;">
           ${[...historySummary.entries()].map(([productName, count]) => `
@@ -2424,7 +2453,7 @@ async function openHouseManagementModal() {
                   <th style="padding:0.75rem;">เบอร์โทรศัพท์</th>
                   <th style="padding:0.75rem;">รายละเอียด /บ้านเลขที่</th>
                   <th style="padding:0.75rem;">หมายเหตุ</th>
-                  <th style="padding:0.75rem; text-align:center;">สิทธิ์/วัน</th>
+                  <th style="padding:0.75rem; text-align:center;">สิทธิ์</th>
                   <th style="padding:0.75rem; text-align:center;">ใช้ไปแล้ว</th>
                   <th style="padding:0.75rem; text-align:center;">สิทธิ์ทั้งหมด</th>
                   <th style="padding:0.75rem; text-align:center;">จัดการ</th>
@@ -2932,7 +2961,7 @@ function renderHouseTable(list) {
       <td style="padding:0.75rem;">${esc(item.phone || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.address || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.project || '-')}</td>
-      <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.quotaPerDay ?? 1)}</td>
+      <td style="padding:0.75rem; text-align:center; white-space:nowrap;">${item.limitAll ? 'ไม่จำกัด' : item.quotaPerDay == null ? '-' : Number(item.quotaPerDay) === 0 ? 'ไม่ได้กำหนด' : `${esc(item.quotaPerDay)} สิทธิ์ ${['ต่อวัน', 'ต่อเดือน', 'ต่อปี'][Number(item.limitType)] || 'ต่อวัน'}`}</td>
       <td style="padding:0.75rem; text-align:center;">${Number(item.usedCount ?? 0).toLocaleString('th-TH')}</td>
       <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.allLimit ?? 10)}</td>
       <td style="padding:0.75rem; text-align:center;">

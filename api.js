@@ -565,7 +565,7 @@ async getHistory(userPhone) {
         ? (testUsageCounts.get(String(item.ID)) ?? Number(item.All_Use ?? 0))
         : Number(item.All_Use ?? 0),
       allLimit: item.All_Limit ?? 10,
-      quotaPerDay: item.Day_Limit ?? 1, // อ่านค่า Day_Limit จากเบส
+      quotaPerDay: item.Day_Limit ?? null, // แสดงค่าตามข้อมูลสมาชิกจริง
       isUse: item.IsUse ?? false,
       accessLevel: item.Access_Level ?? 0,
       username: item.Username || '',

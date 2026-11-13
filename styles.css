@@ -260,6 +260,10 @@ body {
   padding: 16px clamp(16px, 3vw, 48px) 32px !important;
 }
 
+#sales-report-modal > main {
+  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)) !important;
+}
+
 .staff-page-header {
   display: flex;
   align-items: center;

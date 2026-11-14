@@ -184,6 +184,17 @@ body {
   stroke-linejoin: round;
 }
 
+.app-build-version {
+  order: 99;
+  margin-left: auto;
+  pointer-events: none;
+  color: #718096;
+  font-size: .63rem;
+  font-weight: 700;
+  letter-spacing: .02em;
+  white-space: nowrap;
+}
+
 .staff-page {
   min-height: 100dvh;
   background: rgba(67, 97, 82, .92);
@@ -242,6 +253,26 @@ body {
   padding-bottom: calc(164px + env(safe-area-inset-bottom, 0px)) !important;
 }
 
+.staff-main-header-actions {
+  position: absolute;
+  top: calc(16px + env(safe-area-inset-top, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.staff-main-header-actions .app-build-version {
+  order: 0;
+  margin-left: 0;
+}
+
+#printer-connection-report {
+  order: 100;
+  margin-left: 0 !important;
+}
+
 /* เฉพาะหน้าจัดการข้อมูลสมาชิก: ใช้ความกว้างเต็มจอสำหรับตารางและข้อมูล */
 #app.member-management-screen {
   max-width: none;
@@ -265,6 +296,7 @@ body {
 }
 
 .staff-page-header {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;

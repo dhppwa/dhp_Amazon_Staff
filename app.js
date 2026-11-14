@@ -1,5 +1,8 @@
 // app.js (ระบบพนักงานขาย + พิมพ์ใบเสร็จ BLE + สแกน QR Code + จัดการตาราง Cafe_Amazon_Promosion_House)
 const app = document.querySelector('#app');
+// เปลี่ยนเลขท้ายเมื่อ Build ใหม่ในวันเดียวกัน (YYYYMMDD-ลำดับครั้งที่ Build)
+const APP_BUILD_VERSION = '20261114-1';
+const renderBuildVersion = () => `<span class="app-build-version" aria-label="เวอร์ชัน ${APP_BUILD_VERSION}">${APP_BUILD_VERSION}</span>`;
 let html5QrCode = null;
 let bluetoothDevice = null;
 let bluetoothCharacteristic = null;
@@ -1593,7 +1596,7 @@ function renderAirPrintReceipt(data, billNo) {
   app.innerHTML = `
     <div class="staff-page airprint-page">
       <div class="staff-page-header">
-        <button class="back" id="btn-close-airprint" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button class="back" id="btn-close-airprint" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3>ใบเสร็จรับสิทธิ์</h3>
       </div>
       <main id="airprint-receipt" class="airprint-receipt">
@@ -1888,7 +1891,7 @@ function showSalesReportPrintPreview(startDate, endDate, mode, bills) {
     <div id="sales-report-print-dialog" class="staff-page" style="position:fixed; inset:0; z-index:50002; width:100vw; min-height:100dvh; overflow:hidden; background:#6f8f7e; color:#1e293b;">
       <section style="width:100%; min-height:100dvh; height:100dvh; display:flex; flex-direction:column; background:#6f8f7e;">
         <header class="staff-page-header" style="flex:0 0 auto; background:#fff; border-bottom:1px solid #cbd5e1;">
-          <button class="back" id="btn-close-sales-report-print" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button class="back" id="btn-close-sales-report-print" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
           <h3 style="color:#0284c7;">ตัวอย่างก่อนพิมพ์รายงาน</h3>
         </header>
         <main style="flex:1; min-height:0; width:100%; overflow:auto; padding:clamp(18px,3vw,36px) clamp(16px,6vw,96px) 110px; box-sizing:border-box;">
@@ -1941,8 +1944,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
   app.classList.add('member-management-screen');
   app.innerHTML = `
     <div id="sales-report-modal" class="staff-page" style="min-height:100vh; color:#1e293b;">
-      <div style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:.5rem; z-index:10;">
-        <button class="back" id="btn-close-sales-report" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="staff-page-header" style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:.5rem; z-index:10;">
+        <button class="back" id="btn-close-sales-report" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3 style="margin:0; font-size:1.1rem; color:#0284c7;">📊 รายงานการขาย</h3>
         <span id="printer-connection-report" data-printer-connection-status style="margin-left:auto; display:inline-flex; align-items:center; padding:5px 8px; border:1px solid #cbd5e1; border-radius:999px; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
       </div>
@@ -2009,8 +2012,8 @@ async function openSalesReport(startDateValue = getLocalDateValue(), endDateValu
         <article style="padding:13px; border:1px solid #e2e8f0; border-radius:10px; background:#fff; display:flex; gap:12px; align-items:center;">
           ${renderProductImage(group.productId, group.productName, group.productImage, 64)}
           <div style="min-width:0; flex:1;">
-            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span>${group.discounts.every(item => item.isCustomAmount) ? '' : `<span style="white-space:nowrap; color:#475569; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`}</div>
-            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); const line = item.isCustomAmount ? `฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} บิล` : `dis ${formatDiscountPercent(item.discount)}% ฿${discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} @${item.quantity.toLocaleString('th-TH')} สิทธิ์`; return `<div style="display:flex; justify-content:space-between; gap:12px;"><span>${line}</span><span style="color:#059669; white-space:nowrap; font-weight:400;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>`; }).join('')}</div>
+            <div style="display:flex; justify-content:flex-start; align-items:baseline; gap:12px; color:#1e293b;"><span style="font-weight:700;">${esc(group.productName)}</span>${group.discounts.every(item => item.isCustomAmount) ? '' : `<span style="white-space:nowrap; color:#475569; font-size:.75rem; font-weight:400;">฿${Number(group.productPrice || 0).toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>`}</div>
+            <div style="display:grid; gap:4px; margin-top:7px; color:#475569; font-size:.86rem;">${group.discounts.map(item => { const discountedUnitPrice = item.productPrice * (1 - item.discount / 100); const price = discountedUnitPrice.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); const line = item.isCustomAmount ? `฿${price} @${item.quantity.toLocaleString('th-TH')} บิล` : `dis ${formatDiscountPercent(item.discount)}% ฿${price} @${item.quantity.toLocaleString('th-TH')} สิทธิ์`; return `<div><div>${line}</div><div style="text-align:right; color:#059669; white-space:nowrap; font-size:1.1rem; font-weight:700;">฿${item.total.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div></div>`; }).join('')}</div>
           </div>
         </article>`).join('')}</div>` : '<p style="padding:24px; text-align:center; color:#64748b; background:#fff; border-radius:10px;">ไม่พบรายการขายในช่วงวันที่เลือก</p>');
       return;
@@ -2181,7 +2184,7 @@ function renderClientDetailPage(data) {
     <div id="client-detail-modal" class="staff-page">
       
       <div class="staff-page-header">
-        <button class="back" id="btn-close-detail" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+        <button class="back" id="btn-close-detail" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3>ข้อมูลสมาชิก</h3>
       </div>
 
@@ -2330,8 +2333,8 @@ async function openHistoryModal(phone, clientData, onClose) {
   const modalHtml = `
     <div id="history-modal" class="staff-page">
       
-      <div style="padding:1rem; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.5rem;">
-        <button class="back" id="btn-close-history" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="staff-page-header" style="padding:1rem; background:#fff; border-bottom:1px solid #e2e8f0; display:flex; align-items:center; gap:0.5rem;">
+        <button class="back" id="btn-close-history" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3 style="margin:0; font-size:1.1rem; color:#1e293b;">ประวัติการใช้สิทธิ์</h3>
       </div>
 
@@ -2421,8 +2424,8 @@ async function openHouseManagementModal() {
   const modalHtml = `
     <div id="house-modal" class="staff-page">
       
-      <div style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:0.5rem; z-index:10;">
-        <button class="back" id="btn-close-house-modal" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="staff-page-header" style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:0.5rem; z-index:10;">
+        <button class="back" id="btn-close-house-modal" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3 style="margin:0; font-size:1.1rem; color:#0284c7;">🏠 จัดการข้อมูลสมาชิก</h3>
       </div>
 
@@ -2514,8 +2517,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const modalHtml = `
     <div id="house-record-modal" class="staff-page">
       
-      <div style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:0.5rem;">
-        <button class="back" id="btn-close-record-modal" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+      <div class="staff-page-header" style="padding:1rem; background:#fff; border-bottom:1px solid #cbd5e1; display:flex; align-items:center; gap:0.5rem;">
+        <button class="back" id="btn-close-record-modal" type="button" aria-label="กลับ"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>${renderBuildVersion()}
         <h3 style="margin:0; font-size:1.1rem; color:#059669;">${esc(title)}</h3>
       </div>
 
@@ -3213,7 +3216,10 @@ function renderMainUI() {
   app.innerHTML = `
     <div class="shell staff-main-shell" style="max-width: 480px; margin: 0 auto; padding: 1rem; font-family: sans-serif; position: relative; min-height: 80vh;">
       <header style="text-align: center; margin-bottom: 1.5rem;">
-        <span id="printer-connection-main" data-printer-connection-status style="position:absolute; top:calc(16px + env(safe-area-inset-top, 0px)); right:calc(16px + env(safe-area-inset-right, 0px)); display:inline-flex; align-items:center; padding:5px 8px; border:1px solid ${isPrinterOnline() ? '#059669' : '#cbd5e1'}; border-radius:999px; background:${isPrinterOnline() ? '#059669' : '#e2e8f0'}; color:${isPrinterOnline() ? '#ffffff' : '#64748b'}; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
+        <div class="staff-main-header-actions">
+          ${renderBuildVersion()}
+          <span id="printer-connection-main" data-printer-connection-status style="display:inline-flex; align-items:center; padding:5px 8px; border:1px solid ${isPrinterOnline() ? '#059669' : '#cbd5e1'}; border-radius:999px; background:${isPrinterOnline() ? '#059669' : '#e2e8f0'}; color:${isPrinterOnline() ? '#ffffff' : '#64748b'}; font-size:.74rem; font-weight:700; white-space:nowrap;">${printerConnectionLabel()}</span>
+        </div>
         <img 
           src="public/assets/image/icon-512.png?v=18" 
           alt="D Coupon Shop Logo" 

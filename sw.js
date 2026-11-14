@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'amazon-staff-';
-const CACHE_NAME = `${CACHE_PREFIX}v283`;
+const CACHE_NAME = `${CACHE_PREFIX}v284`;
 
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();

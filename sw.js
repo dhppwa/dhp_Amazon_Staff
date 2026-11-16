@@ -1,5 +1,19 @@
 const CACHE_PREFIX = 'amazon-staff-';
-const CACHE_NAME = `${CACHE_PREFIX}v286`;
+const CACHE_NAME = `${CACHE_PREFIX}v287`;
+
+// เก็บหน้าและไฟล์โค้ดตามรุ่นนี้ไว้ตั้งแต่ติดตั้ง เพื่อไม่ปะปนกับรุ่นใหม่
+self.addEventListener('install', event => {
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE_NAME);
+    const response = await fetch(new Request('./index.html', { cache: 'reload' }));
+    if (!response.ok) throw new Error('Cannot cache app page');
+    const html = await response.clone().text();
+    await cache.put('./index.html', response);
+    const files = [...html.matchAll(/(?:src|href)=["']([^"']+\.(?:js|css)(?:\?[^"']*)?)["']/gi)]
+      .map(match => match[1]).filter(path => !/^(?:https?:)?\/\//i.test(path));
+    await cache.addAll([...new Set(files)].map(path => new Request(path, { cache: 'reload' })));
+  })());
+});
 
 self.addEventListener('message', event => {
   if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
@@ -20,6 +34,14 @@ self.addEventListener('fetch', event => {
 
   event.respondWith((async () => {
     const cache = await caches.open(CACHE_NAME);
+    if (event.request.mode === 'navigate') {
+      const page = await cache.match('./index.html');
+      if (page) return page;
+    }
+    if (['script', 'style'].includes(event.request.destination)) {
+      const cached = await cache.match(event.request);
+      if (cached) return cached;
+    }
     try {
       const response = await fetch(new Request(event.request, { cache: 'no-store' }));
       if (response.ok) await cache.put(event.request, response.clone());

@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'amazon-staff-';
-const CACHE_NAME = `${CACHE_PREFIX}v287`;
+const CACHE_NAME = `${CACHE_PREFIX}v288`;
 
 // เก็บหน้าและไฟล์โค้ดตามรุ่นนี้ไว้ตั้งแต่ติดตั้ง เพื่อไม่ปะปนกับรุ่นใหม่
 self.addEventListener('install', event => {

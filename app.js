@@ -1,7 +1,7 @@
 // app.js (ระบบพนักงานขาย + พิมพ์ใบเสร็จ BLE + สแกน QR Code + จัดการตาราง Cafe_Amazon_Promosion_House)
 const app = document.querySelector('#app');
 // เปลี่ยนเลขท้ายเมื่อ Build ใหม่ในวันเดียวกัน (YYMMDD-ลำดับครั้งที่ Build)
-const APP_BUILD_VERSION = '261116-1';
+const APP_BUILD_VERSION = '261116-2';
 const renderBuildVersion = () => `<span class="app-build-version" aria-label="เวอร์ชัน ${APP_BUILD_VERSION}">${APP_BUILD_VERSION}</span>`;
 let html5QrCode = null;
 let bluetoothDevice = null;

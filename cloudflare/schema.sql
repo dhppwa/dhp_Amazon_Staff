@@ -26,7 +26,8 @@ CREATE TABLE IF NOT EXISTS Cafe_Amazon_Promosion_House (
   Email TEXT,
   LimitAll INTEGER NOT NULL DEFAULT 0 CHECK (LimitAll IN (0, 1)),
   LimitType INTEGER NOT NULL DEFAULT 0,
-  Discount REAL NOT NULL DEFAULT 0
+  Discount REAL NOT NULL DEFAULT 0,
+  Discount_Expires_On TEXT DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS Cafe_Amazon_Bill (

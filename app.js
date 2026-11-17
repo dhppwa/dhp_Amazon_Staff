@@ -1,7 +1,7 @@
 // app.js (ระบบพนักงานขาย + พิมพ์ใบเสร็จ BLE + สแกน QR Code + จัดการตาราง Cafe_Amazon_Promosion_House)
 const app = document.querySelector('#app');
 // เปลี่ยนเลขท้ายเมื่อ Build ใหม่ในวันเดียวกัน (YYMMDD-ลำดับครั้งที่ Build)
-const APP_BUILD_VERSION = '261116-2';
+const APP_BUILD_VERSION = '261117-1';
 const renderBuildVersion = () => `<span class="app-build-version" aria-label="เวอร์ชัน ${APP_BUILD_VERSION}">${APP_BUILD_VERSION}</span>`;
 let html5QrCode = null;
 let bluetoothDevice = null;
@@ -2610,11 +2610,20 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
 
             <div>
               <label style="font-size:0.85rem; font-weight:bold; color:#475569;">ส่วนลด</label>
-              <div style="display:flex; align-items:stretch;">
-                <input type="number" id="h-field-discount" value="${esc(record?.discount ?? 0)}" min="0" max="100" step="0.01" required inputmode="decimal" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
-                <span aria-hidden="true" style="display:flex; align-items:center; padding:0 0.8rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#f1f5f9; color:#475569; font-weight:bold;">%</span>
+              <div style="display:flex; align-items:center; gap:8px;">
+                <div style="display:flex; align-items:stretch; width:50%; min-width:0;">
+                  <input type="number" id="h-field-discount" value="${esc(record?.discount ?? 0)}" min="0" max="100" step="0.01" required inputmode="decimal" style="width:100%; min-width:0; padding:0.6rem; border:1px solid #cbd5e1; border-right:0; border-radius:6px 0 0 6px; box-sizing:border-box; font-size:0.95rem;" />
+                  <span aria-hidden="true" style="display:flex; align-items:center; padding:0 0.8rem; border:1px solid #cbd5e1; border-radius:0 6px 6px 0; background:#f1f5f9; color:#475569; font-weight:bold;">%</span>
+                </div>
+                <span style="color:#475569; font-size:0.85rem; white-space:nowrap;">ของราคาปกติ</span>
               </div>
             </div>
+            <fieldset style="margin:12px 0 0; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+              <legend style="font-size:.85rem; font-weight:700; color:#475569;">ระยะเวลาการใช้งานส่วนลด</legend>
+              <label style="display:flex; align-items:center; gap:8px;"><input type="radio" name="discount-expiry-mode" value="none" ${record?.discountExpiresOn ? '' : 'checked'}> ไม่กำหนด</label>
+              <label style="display:flex; align-items:center; gap:8px; margin-top:8px;"><input type="radio" name="discount-expiry-mode" value="date" ${record?.discountExpiresOn ? 'checked' : ''}> กำหนดถึงวันที่</label>
+              <input id="h-field-discount-expiry" type="date" value="${esc(record?.discountExpiresOn || '')}" ${record?.discountExpiresOn ? '' : 'disabled'} style="margin-top:8px; width:100%; box-sizing:border-box;">
+            </fieldset>
             </section>
 
             ${isEdit ? `
@@ -2700,6 +2709,10 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const usernameField = document.querySelector('#h-field-username');
   const emailField = document.querySelector('#h-field-email');
   const discountField = document.querySelector('#h-field-discount');
+  const discountExpiryField = document.querySelector('#h-field-discount-expiry');
+  document.querySelectorAll('input[name="discount-expiry-mode"]').forEach(field => field.addEventListener('change', () => {
+    discountExpiryField.disabled = document.querySelector('input[name="discount-expiry-mode"]:checked')?.value !== 'date';
+  }));
   const allLimitField = document.querySelector('#h-field-allLimit');
   const getLoginType = () => Number(loginTypeFields.find(field => field.checked)?.value ?? 0);
   const getLimitAll = () => Number(limitAllFields.find(field => field.checked)?.value ?? 0) === 1;
@@ -2902,8 +2915,15 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       isUse: isEdit ? Number(isUseField.value) === 1 : false,
       usedCount: usedCountVal,
       allLimit: allLimitVal,
-      discount: discountVal
+      discount: discountVal,
+      discountExpiresOn: discountExpiryField.disabled ? null : discountExpiryField.value
     };
+
+    if (!discountExpiryField.disabled && !discountExpiryField.value) {
+      await showAppDialog('กรุณาเลือกวันสิ้นสุดส่วนลด');
+      discountExpiryField.focus();
+      return;
+    }
 
     if (!id) {
       payload.password = '1234';
@@ -2964,7 +2984,7 @@ function renderHouseTable(list) {
       <td style="padding:0.75rem;">${esc(item.phone || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.address || '-')}</td>
       <td style="padding:0.75rem;">${esc(item.project || '-')}</td>
-      <td style="padding:0.75rem; text-align:center; white-space:nowrap;">${item.limitAll ? 'ไม่จำกัด' : item.quotaPerDay == null ? '-' : Number(item.quotaPerDay) === 0 ? 'ไม่ได้กำหนด' : `${esc(item.quotaPerDay)} สิทธิ์ ${['ต่อวัน', 'ต่อเดือน', 'ต่อปี'][Number(item.limitType)] || 'ต่อวัน'}`}</td>
+      <td style="padding:0.75rem; text-align:center; white-space:nowrap;">${item.limitAll ? 'ไม่จำกัด' : item.quotaPerDay == null ? '-' : Number(item.quotaPerDay) === 0 ? 'ไม่ได้กำหนด' : `${esc(item.quotaPerDay)} สิทธิ์ / ${['วัน', 'เดือน', 'ปี'][Number(item.limitType)] || 'วัน'}`}</td>
       <td style="padding:0.75rem; text-align:center;">${Number(item.usedCount ?? 0).toLocaleString('th-TH')}</td>
       <td style="padding:0.75rem; text-align:center;">${item.limitAll ? 'ไม่จำกัด' : (item.allLimit ?? 10)}</td>
       <td style="padding:0.75rem; text-align:center;">

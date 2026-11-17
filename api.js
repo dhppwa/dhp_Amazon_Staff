@@ -1,10 +1,10 @@
 // api.js (ระบบพนักงานขาย - Cloudflare Worker + D1)
 
 const INTERNET_ERROR_MESSAGE = 'เชื่อมต่อ Internet ไม่ได้ กรุณาตรวจสอบหรือเชื่อมต่อ Internet แล้วลองอีกครั้ง';
-function effectiveMemberDiscount(data) {
+function hasExpiredRedemption(data) {
   const expiry = String(data.Discount_Expires_On || '').slice(0, 10);
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  return expiry && expiry < today ? 0 : Math.min(100, Math.max(0, Number(data.Discount ?? 0)));
+  return Boolean(expiry && expiry < today);
 }
 const nativeFetch = window.fetch.bind(window);
 let lastInternetCheckAt = 0;
@@ -336,6 +336,7 @@ async generateBillNo() {
 
   if (error) throw new Error(`เกิดข้อผิดพลาดในการดึงข้อมูล: ${error.message}`);
   if (!data) throw new Error(`ไม่พบข้อมูลสมาชิกหรือคูปอง (${cleanKey}) ในระบบ`);
+  if (hasExpiredRedemption(data)) throw new Error('สิทธิ์แลกสินค้าหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบ');
 
   if (data.Confirm_Coupon === true) {
     throw new Error('❌ คูปองนี้ถูกใช้งานไปแล้ว ไม่สามารถใช้ซ้ำได้');
@@ -374,7 +375,7 @@ async generateBillNo() {
     productPrice: Number(product?.price || 0),
     isCustomAmount: Boolean(product?.isCustomAmount),
     // รายการใส่จำนวนเงิน (C-<สตางค์>) ใช้ยอดที่กรอกเต็มจำนวนเสมอ
-    discount: product?.isCustomAmount ? 0 : effectiveMemberDiscount(data)
+    discount: product?.isCustomAmount ? 0 : Math.min(100, Math.max(0, Number(data.Discount ?? 0)))
   };
   },
 
@@ -393,11 +394,12 @@ async generateBillNo() {
       .maybeSingle();
 
     if (error) throw new Error(`ตรวจสอบคูปองไม่สำเร็จ: ${error.message}`);
+    if (data && hasExpiredRedemption(data)) throw new Error('สิทธิ์แลกสินค้าหมดอายุแล้ว กรุณาติดต่อผู้ดูแลระบบ');
     if (!data || data.Confirm_Coupon === true || data.Coupon_No !== cleanCouponNo) {
       throw new Error('คูปองหมดอายุแล้ว กรุณาให้ลูกค้าสร้างคูปองใหม่');
     }
     return {
-      discount: effectiveMemberDiscount(data),
+      discount: Math.min(100, Math.max(0, Number(data.Discount ?? 0))),
       usedCount: Number(data.All_Use ?? 0),
       allLimit: Number(data.All_Limit ?? 0),
       quotaPerPeriod: Number(data.Day_Limit ?? 0),
@@ -660,7 +662,7 @@ async getHistory(userPhone) {
     const loginTypeValue = [0, 1, 2].includes(Number(payload.loginType)) ? Number(payload.loginType) : 0;
     const discountValue = Number(payload.discount ?? 0);
     const discountExpiresOn = payload.discountExpiresOn || null;
-    if (discountExpiresOn && !/^\d{4}-\d{2}-\d{2}$/.test(discountExpiresOn)) throw new Error('กรุณาระบุวันสิ้นสุดส่วนลดให้ถูกต้อง');
+    if (discountExpiresOn && !/^\d{4}-\d{2}-\d{2}$/.test(discountExpiresOn)) throw new Error('กรุณาระบุวันสิ้นสุดการใช้สิทธิ์ให้ถูกต้อง');
     const limitAllValue = Boolean(payload.limitAll);
     const limitTypeValue = [0, 1, 2].includes(Number(payload.limitType)) ? Number(payload.limitType) : 0;
 

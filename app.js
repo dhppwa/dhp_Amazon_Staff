@@ -1,7 +1,7 @@
 // app.js (ระบบพนักงานขาย + พิมพ์ใบเสร็จ BLE + สแกน QR Code + จัดการตาราง Cafe_Amazon_Promosion_House)
 const app = document.querySelector('#app');
 // เปลี่ยนเลขท้ายเมื่อ Build ใหม่ในวันเดียวกัน (YYMMDD-ลำดับครั้งที่ Build)
-const APP_BUILD_VERSION = '261117-1';
+const APP_BUILD_VERSION = '261117-2';
 const renderBuildVersion = () => `<span class="app-build-version" aria-label="เวอร์ชัน ${APP_BUILD_VERSION}">${APP_BUILD_VERSION}</span>`;
 let html5QrCode = null;
 let bluetoothDevice = null;
@@ -2586,6 +2586,15 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 <input type="number" id="h-field-allLimit" value="${isEdit ? (record?.allLimit ?? '') : ''}" min="1" aria-label="สิทธิ์ทั้งหมด" style="width:110px; max-width:45%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:6px; box-sizing:border-box; font-size:0.95rem; text-align:center;" />
                 <span>สิทธิ์</span>
               </div>
+              <fieldset style="margin:12px 0 0; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
+                <legend style="font-size:.85rem; font-weight:700; color:#475569;">ระยะเวลาการใช้สิทธิ์</legend>
+                <label style="display:flex; align-items:center; gap:8px;"><input type="radio" name="discount-expiry-mode" value="none" ${record?.discountExpiresOn ? '' : 'checked'}> ไม่กำหนด</label>
+                <label style="display:flex; align-items:center; gap:8px; margin-top:8px;"><input type="radio" name="discount-expiry-mode" value="date" ${record?.discountExpiresOn ? 'checked' : ''}> กำหนดถึงวันที่</label>
+                <div style="display:flex; align-items:center; gap:8px; margin-top:8px;">
+                  <input id="h-field-discount-expiry" type="date" value="${esc(record?.discountExpiresOn || '')}" ${record?.discountExpiresOn ? '' : 'disabled'} style="flex:1; min-width:0; box-sizing:border-box;">
+                  <span id="h-expiry-days" aria-live="polite" style="flex:0 0 auto; color:#475569; font-size:.85rem; font-weight:700; white-space:nowrap;"></span>
+                </div>
+              </fieldset>
             </fieldset>
 
             <div id="h-fields-rights" style="display:flex; align-items:flex-end; width:100%;">
@@ -2618,12 +2627,6 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
                 <span style="color:#475569; font-size:0.85rem; white-space:nowrap;">ของราคาปกติ</span>
               </div>
             </div>
-            <fieldset style="margin:12px 0 0; padding:10px; border:1px solid #cbd5e1; border-radius:8px;">
-              <legend style="font-size:.85rem; font-weight:700; color:#475569;">ระยะเวลาการใช้งานส่วนลด</legend>
-              <label style="display:flex; align-items:center; gap:8px;"><input type="radio" name="discount-expiry-mode" value="none" ${record?.discountExpiresOn ? '' : 'checked'}> ไม่กำหนด</label>
-              <label style="display:flex; align-items:center; gap:8px; margin-top:8px;"><input type="radio" name="discount-expiry-mode" value="date" ${record?.discountExpiresOn ? 'checked' : ''}> กำหนดถึงวันที่</label>
-              <input id="h-field-discount-expiry" type="date" value="${esc(record?.discountExpiresOn || '')}" ${record?.discountExpiresOn ? '' : 'disabled'} style="margin-top:8px; width:100%; box-sizing:border-box;">
-            </fieldset>
             </section>
 
             ${isEdit ? `
@@ -2710,9 +2713,23 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
   const emailField = document.querySelector('#h-field-email');
   const discountField = document.querySelector('#h-field-discount');
   const discountExpiryField = document.querySelector('#h-field-discount-expiry');
+  const expiryDaysLabel = document.querySelector('#h-expiry-days');
+  const updateExpiryDays = () => {
+    if (discountExpiryField.disabled || !discountExpiryField.value) {
+      expiryDaysLabel.textContent = '';
+      return;
+    }
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const days = Math.round((Date.parse(`${discountExpiryField.value}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86400000);
+    expiryDaysLabel.textContent = days < 0 ? 'หมดอายุแล้ว' : `${days.toLocaleString('th-TH')} วัน`;
+  };
   document.querySelectorAll('input[name="discount-expiry-mode"]').forEach(field => field.addEventListener('change', () => {
     discountExpiryField.disabled = document.querySelector('input[name="discount-expiry-mode"]:checked')?.value !== 'date';
+    updateExpiryDays();
   }));
+  discountExpiryField.addEventListener('input', updateExpiryDays);
+  discountExpiryField.addEventListener('change', updateExpiryDays);
+  updateExpiryDays();
   const allLimitField = document.querySelector('#h-field-allLimit');
   const getLoginType = () => Number(loginTypeFields.find(field => field.checked)?.value ?? 0);
   const getLimitAll = () => Number(limitAllFields.find(field => field.checked)?.value ?? 0) === 1;
@@ -2920,7 +2937,7 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     };
 
     if (!discountExpiryField.disabled && !discountExpiryField.value) {
-      await showAppDialog('กรุณาเลือกวันสิ้นสุดส่วนลด');
+      await showAppDialog('กรุณาเลือกวันสิ้นสุดการใช้สิทธิ์');
       discountExpiryField.focus();
       return;
     }

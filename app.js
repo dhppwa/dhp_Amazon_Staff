@@ -1,7 +1,7 @@
 // app.js (ระบบพนักงานขาย + พิมพ์ใบเสร็จ BLE + สแกน QR Code + จัดการตาราง Cafe_Amazon_Promosion_House)
 const app = document.querySelector('#app');
 // เปลี่ยนเลขท้ายเมื่อ Build ใหม่ในวันเดียวกัน (YYMMDD-ลำดับครั้งที่ Build)
-const APP_BUILD_VERSION = '261118-1';
+const APP_BUILD_VERSION = '261121-1';
 const renderBuildVersion = () => `<span class="app-build-version" aria-label="เวอร์ชัน ${APP_BUILD_VERSION}">${APP_BUILD_VERSION}</span>`;
 let html5QrCode = null;
 let bluetoothDevice = null;
@@ -2835,6 +2835,8 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
     limitSettings.querySelectorAll('input').forEach((input) => {
       input.disabled = isAdmin;
     });
+    discountExpiryField.disabled = isAdmin || document.querySelector('input[name="discount-expiry-mode"]:checked')?.value !== 'date';
+    updateExpiryDays();
     updateLimitAllState();
   };
 
@@ -2942,10 +2944,10 @@ function openHouseRecordModal(title, isEdit = false, record = null) {
       usedCount: usedCountVal,
       allLimit: allLimitVal,
       discount: discountVal,
-      discountExpiresOn: discountExpiryField.disabled ? null : discountExpiryField.value
+      discountExpiresOn: isAdmin || document.querySelector('input[name="discount-expiry-mode"]:checked')?.value !== 'date' ? null : discountExpiryField.value
     };
 
-    if (!discountExpiryField.disabled && !discountExpiryField.value) {
+    if (!isAdmin && document.querySelector('input[name="discount-expiry-mode"]:checked')?.value === 'date' && !discountExpiryField.value) {
       await showAppDialog('กรุณาเลือกวันสิ้นสุดการใช้สิทธิ์');
       expiryDateButton.focus();
       return;
